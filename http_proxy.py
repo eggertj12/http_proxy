@@ -12,6 +12,7 @@ class Request:
     
 def parse_request_line(buf, req):
     sp = buf.split("\n", 1)
+    print "request_line: ", sp[0]
     req.verb, req.path, req.version = sp[0].split(" ")
     return sp[1]
 
@@ -19,14 +20,27 @@ def parse_headers(buf, req):
     line, buf = buf.split("\n", 1)
     line = line.strip(" \n\r\t")
     while len(line) > 0:
-        # print "line: ", line
-        splitted = line.split(':')
+        print "line: ", line
+        splitted = line.split(':', 1)
         key = splitted[0].lower()
         value = splitted[1]
         req.headers[key] = value.strip(" \n\r\t")
-        line, buf = buf.split("\n", 1)
+        splitted = buf.split("\n", 1)
+        line = splitted[0]
+        try:
+            buf = splitted[1]
+        except Exception:
+            buf = "\n"
+        # buf = buf.split("\n", 1)
         line = line.strip(" \n\r\t")
     return buf
+
+def get_dest_port(req):
+    if ':' in req.headers['host']:
+        req.headers['host'], port = req.headers['host'].split(':')
+    else:
+        port = '80'
+    return port
 
 def create_request():
     pass
@@ -62,14 +76,26 @@ def echoThread(connectionsocket, addr):
             print 'connection closed after timeout: ' + str(peer[0]) + ':' + str(peer[1])
             break
 
-        packet, addr1 = connectionsocket.recvfrom(1024)
+        packet, addr1 = connectionsocket.recvfrom(2048)
+
+        # length of 0 means connection was closed
+        if (len(packet) == 0):
+            print "connection closed"
+            break
 
         req = Request()
 
         trimmed = parse_request_line(packet, req)
         trimmed = parse_headers(trimmed, req)
 
-        print req.headers
+        # host header is required
+        if not ('host' in req.headers):
+            print 'invalid request'
+            break
+
+        req.port = get_dest_port(req)
+
+#        print req.headers
 
         req.host_addr = socket.gethostbyname(req.headers['host'])
         
@@ -86,7 +112,7 @@ def echoThread(connectionsocket, addr):
         file.close()
             
     # All work done for thread, close socket
-    socket.close()
+    connectionsocket.close()
 
 #################################################
 # Program start
@@ -111,7 +137,7 @@ while True:
 
     # dispatch to thread, set it as deamon as not to keep process alive
     thr = threading.Thread(target=echoThread, args=(connectionSocket, addr))
-    thr.deamon = True
+    thr.daemon = True
     thr.start()
 
 # clean up afterwards
