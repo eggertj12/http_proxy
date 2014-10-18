@@ -26,13 +26,22 @@ def parse_headers(buf, req):
         req.headers[key] = value.strip(" \n\r\t")
         line, buf = buf.split("\n", 1)
         line = line.strip(" \n\r\t")
+        print buf
     return buf
 
-def create_request():
-    pass
+def create_request(url):
+    response = requests.get(url)
+    print "PRINTED RESPONSE " + response
+    return response
 
-def open_connection():
-    pass
+def open_connection(req):
+    conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    conn.connect((req.headers["host"], 80))
+#    conn = threading.Thread(target='mbl.is')
+#    conn.daemon = True
+#    conn.start()
+#    temp = create_request('http://mbl.is')
+    return conn
 
 def create_response():
     pass
@@ -68,14 +77,21 @@ def echoThread(connectionsocket, addr):
 
         trimmed = parse_request_line(packet, req)
         trimmed = parse_headers(trimmed, req)
-
-        print req.headers
-
-        req.host_addr = socket.gethostbyname(req.headers['host'])
         
-#        print requestname
-        print 'hostaddress is: ' + req.headers['host']
-        print 'ipaddress is: ' + req.host_addr
+        connection = open_connection(req)
+        connection.send(packet)
+        response = connection.recv(4096)
+        connectionsocket.send(response)
+        print "------------------------------------"
+        print response
+        print "------------------------------------"
+#        print req.headers
+
+#        req.host_addr = socket.gethostbyname(req.headers['host'])
+        
+#       print requestname
+#        print 'hostaddress is: ' + req.headers['host']
+#        print 'ipaddress is: ' + req.host_addr
 
         #Logging to file
         date = datetime.datetime.today()
