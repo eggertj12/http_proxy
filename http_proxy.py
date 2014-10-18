@@ -1,4 +1,4 @@
-#from socket import *
+from socket import *
 import socket
 import sys
 import select
@@ -157,17 +157,20 @@ port = int(sys.argv[1])
 listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 listenSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 listenSocket.bind(('', port))
-listenSocket.listen(1)
+try:
+    listenSocket.listen(1)
 
-# Then it's easy peasy from here on, just sit back and wait
-while True:
-    connectionSocket, addr = listenSocket.accept()
+    # Then it's easy peasy from here on, just sit back and wait
+    while True:
+        connectionSocket, addr = listenSocket.accept()
+        connectionSocket.settimeout(30)
 
-    # dispatch to thread, set it as deamon as not to keep process alive
-    thr = threading.Thread(target=echoThread, args=(connectionSocket, addr))
-    thr.daemon = True
-    thr.start()
-
+        # dispatch to thread, set it as deamon as not to keep process alive
+        thr = threading.Thread(target=echoThread, args=(connectionSocket, addr))
+        thr.daemon = True
+        thr.start()
+except timeout:
+    print 'connection closed after timeout'
 # clean up afterwards
 listenSocket.shutdown(2)
 listenSocket.close()
