@@ -6,6 +6,8 @@ import threading
 import datetime
 import logging
 
+buflen = 4096
+
 class Request:
     """ Class to hold request info """
     def __init__(self):
@@ -86,7 +88,7 @@ def echoThread(connectionsocket, addr):
             print 'connection closed after timeout: ' + str(peer[0]) + ':' + str(peer[1])
             break
 
-        packet, addr1 = connectionsocket.recvfrom(2048)
+        packet, addr1 = connectionsocket.recvfrom(buflen)
 
         # length of 0 means connection was closed
         if (len(packet) == 0):
@@ -111,11 +113,18 @@ def echoThread(connectionsocket, addr):
         
         connection = open_connection(req)
         connection.send(packet)
-        response = connection.recv(4096)
+        response = connection.recv(buflen)
+        lengd = len(response)
+
+        #Used to fetch from response until all data has been sent
         connectionsocket.send(response)
-        print "------------------------------------"
-        print response
-        print "------------------------------------"
+        if lengd == buflen:
+            while response:
+                response = connection.recv(buflen)
+                connectionsocket.send(response)
+        #print "------------------------------------"
+        #print response
+        #print "------------------------------------"
 #        print req.headers
 
 #        req.host_addr = socket.gethostbyname(req.headers['host'])
