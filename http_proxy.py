@@ -4,6 +4,7 @@ import sys
 import select
 import threading
 import datetime
+import logging
 
 class Request:
     """ Class to hold request info """
@@ -104,12 +105,9 @@ def echoThread(connectionsocket, addr):
         print 'ipaddress is: ' + req.host_addr
 
         #Logging to file
-        date = datetime.datetime.today()
-        log =  str(date)  + ' : ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + packet.split()[0] + ' ' + packet.split()[1] + ' : ' + '\n'
-        logfile = sys.argv[2]
-        file = open( logfile, 'a')
-        file.write(log)
-        file.close()
+        log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : '
+        logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
+        logging.warning(log)
             
     # All work done for thread, close socket
     connectionsocket.close()
