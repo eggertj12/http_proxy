@@ -3,6 +3,7 @@ import socket
 import sys
 import select
 import threading
+import datetime
 
 ###################################################
 # Define a handler for threading
@@ -38,7 +39,8 @@ def echoThread(connectionsocket, addr):
         print 'ipaddress is: ' + hostipaddr
 
         #For the log file
-        print ' : ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + packet.split()[0] + ' ' + packet.split()[1] + ' : '
+        date = datetime.datetime.today()
+        print date + ' : ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + packet.split()[0] + ' ' + packet.split()[1] + ' : '
             
     # All work done for thread, close socket
     socket.close()
