@@ -28,6 +28,17 @@ def parse_headers(buf, req):
         line = line.strip(" \n\r\t")
     return buf
 
+def create_request():
+    pass
+
+def open_connection():
+    pass
+
+def create_response():
+    pass
+
+
+
 ###################################################
 # Define a handler for threading
 # Will serve each connection and then close socket
@@ -43,7 +54,7 @@ def echoThread(connectionsocket, addr):
 
         # select blocks on list of sockets until reading / writing is available
         # or until timeout happens
-        readList, writeList, errorList = select.select([connectionsocket], [], [], 60)
+        readList, writeList, errorList = select.select([connectionsocket], [], [], 30)
 
         # empty list of sockets means a timeout occured
         if (len(readList) == 0):
