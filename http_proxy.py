@@ -66,9 +66,13 @@ def echoThread(connectionsocket, addr):
         print 'hostaddress is: ' + req.headers['host']
         print 'ipaddress is: ' + req.host_addr
 
-        #For the log file
+        #Logging to file
         date = datetime.datetime.today()
-        print str(date)  + ' : ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + packet.split()[0] + ' ' + packet.split()[1] + ' : '
+        log =  str(date)  + ' : ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + packet.split()[0] + ' ' + packet.split()[1] + ' : ' + '\n'
+        logfile = sys.argv[2]
+        file = open( logfile, 'a')
+        file.write(log)
+        file.close()
             
     # All work done for thread, close socket
     socket.close()
@@ -89,12 +93,6 @@ listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 listenSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 listenSocket.bind(('', port))
 listenSocket.listen(1)
-
-#Test for writing to fil
-logfile = sys.argv[2]
-file = open( logfile, 'w')
-file.write('hallo')
-file.close()
 
 # Then it's easy peasy from here on, just sit back and wait
 while True:
