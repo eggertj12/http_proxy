@@ -36,17 +36,19 @@ def echoThread(socket, addr):
             print 'connection closed by client: ' + str(peer[0]) + ':' + str(peer[1])
             break
 
-        # In case of incomplete sending it needs to be wrapped in a loop
-        # to make sure everything gets sent
-        sentBytes = 0
-        while (sentBytes < messageLength):
-            sent = socket.send(message[sentBytes:])
+        print message
+        
+        # # In case of incomplete sending it needs to be wrapped in a loop
+        # # to make sure everything gets sent
+        # sentBytes = 0
+        # while (sentBytes < messageLength):
+        #     sent = socket.send(message[sentBytes:])
 
-            # Again 0 bytes through socket means it has closed, this time probably by some error
-            if (sent == 0):
-                print 'Error sending on connection.'
-                sys.exit(1)
-            sentBytes += sent
+        #     # Again 0 bytes through socket means it has closed, this time probably by some error
+        #     if (sent == 0):
+        #         print 'Error sending on connection.'
+        #         sys.exit(1)
+        #     sentBytes += sent
 
     # All work done for thread, close socket
     socket.close()
