@@ -121,6 +121,7 @@ def echoThread(connectionsocket, addr):
             while response:
                 response = connection.recv(buflen)
                 connectionsocket.send(response)
+        connection.close()
         #print "------------------------------------"
         #print response
         #print "------------------------------------"
