@@ -55,8 +55,8 @@ def echoThread(connectionsocket, addr):
 
         req = Request()
 
-        packet = parse_request_line(packet, req)
-        packet = parse_headers(packet, req)
+        trimmed = parse_request_line(packet, req)
+        trimmed = parse_headers(trimmed, req)
 
         print req.headers
 
