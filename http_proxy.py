@@ -68,7 +68,7 @@ def echoThread(connectionsocket, addr):
 
         #For the log file
         date = datetime.datetime.today()
-        print date + ' : ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + packet.split()[0] + ' ' + packet.split()[1] + ' : '
+        print str(date)  + ' : ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + packet.split()[0] + ' ' + packet.split()[1] + ' : '
             
     # All work done for thread, close socket
     socket.close()
