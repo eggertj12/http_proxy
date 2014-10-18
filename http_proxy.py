@@ -115,9 +115,7 @@ def echoThread(connectionsocket, addr):
         connection.send(packet)
         response = connection.recv(buflen)
         lengd = len(response)
-
         #Used to fetch from response until all data has been sent
-
         connectionsocket.send(response)
         if lengd == buflen:
             while response:
@@ -136,7 +134,7 @@ def echoThread(connectionsocket, addr):
 
         #Logging to file
         log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
-            + response.split()[1] + ' ' + response.split()[2]
+            + req.verb + ' ' + req.path
         logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
         logging.warning(log)
             
