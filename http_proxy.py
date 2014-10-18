@@ -6,6 +6,8 @@ import threading
 import datetime
 import logging
 
+buflen = 4096
+
 class Request:
     """ Class to hold request info """
     def __init__(self):
@@ -13,7 +15,7 @@ class Request:
     
 def parse_request_line(buf, req):
     sp = buf.split("\n", 1)
-    print "request_line: ", sp[0]
+#    print "request_line: ", sp[0]
     req.verb, req.path, req.version = sp[0].split(" ")
     return sp[1]
 
@@ -21,7 +23,7 @@ def parse_headers(buf, req):
     line, buf = buf.split("\n", 1)
     line = line.strip(" \n\r\t")
     while len(line) > 0:
-        print "line: ", line
+#        print "line: ", line
         splitted = line.split(':', 1)
         key = splitted[0].lower()
         value = splitted[1]
@@ -34,12 +36,12 @@ def parse_headers(buf, req):
             buf = "\n"
         # buf = buf.split("\n", 1)
         line = line.strip(" \n\r\t")
-        print buf
+#        print buf
     return buf
 
 def create_request(url):
     response = requests.get(url)
-    print "PRINTED RESPONSE " + response
+#    print "PRINTED RESPONSE " + response
     return response
 
 def get_dest_port(req):
@@ -86,7 +88,7 @@ def echoThread(connectionsocket, addr):
             print 'connection closed after timeout: ' + str(peer[0]) + ':' + str(peer[1])
             break
 
-        packet, addr1 = connectionsocket.recvfrom(2048)
+        packet, addr1 = connectionsocket.recvfrom(buflen)
 
         # length of 0 means connection was closed
         if (len(packet) == 0):
@@ -111,11 +113,19 @@ def echoThread(connectionsocket, addr):
         
         connection = open_connection(req)
         connection.send(packet)
-        response = connection.recv(8192)
+        response = connection.recv(buflen)
+        lengd = len(response)
+
+        #Used to fetch from response until all data has been sent
+
         connectionsocket.send(response)
-        print "------------------------------------"
-        print response
-        print "------------------------------------"
+        if lengd == buflen:
+            while response:
+                response = connection.recv(buflen)
+                connectionsocket.send(response)
+        #print "------------------------------------"
+        #print response
+        #print "------------------------------------"
 #        print req.headers
 
 #        req.host_addr = socket.gethostbyname(req.headers['host'])
