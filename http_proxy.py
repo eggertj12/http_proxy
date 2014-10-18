@@ -51,7 +51,7 @@ def get_dest_port(req):
 
 def open_connection(req):
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    conn.connect((req.headers["host"], 80))
+    conn.connect((req.headers["host"], int(req.port)))
 #    conn = threading.Thread(target='mbl.is')
 #    conn.daemon = True
 #    conn.start()
@@ -111,7 +111,7 @@ def echoThread(connectionsocket, addr):
         
         connection = open_connection(req)
         connection.send(packet)
-        response = connection.recv(4096)
+        response = connection.recv(8192)
         connectionsocket.send(response)
         print "------------------------------------"
         print response
