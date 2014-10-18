@@ -26,7 +26,7 @@ def echoThread(connectionsocket, addr):
             peer = connectionsocket.getpeername()
             print 'connection closed after timeout: ' + str(peer[0]) + ':' + str(peer[1])
             break
-        packet, addr = connectionsocket.recvfrom(1024)
+        packet, addr1 = connectionsocket.recvfrom(1024)
 #        requestname = (packet.split('\n'))[0]
 #        hostaddr = (packet.split(' '))[1]
 #        hostaddr2 = (packet.split(' '))[3]
@@ -36,6 +36,9 @@ def echoThread(connectionsocket, addr):
 #        print requestname
         print 'hostaddress is: ' + hostaddr
         print 'ipaddress is: ' + hostipaddr
+
+        #For the log file
+        print ' : ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + packet.split()[0] + ' ' + packet.split()[1] + ' : '
             
     # All work done for thread, close socket
     socket.close()
@@ -44,8 +47,9 @@ def echoThread(connectionsocket, addr):
 # Program start
 #################################################
 
-if (len(sys.argv) != 2):
-    print 'Need one argument, port number'
+#Send in two variables, portnr and log.txt
+if (len(sys.argv) != 3):
+    print 'Need two arguments, port number and file for logging'
     sys.exit(1)
 
 port = int(sys.argv[1])
@@ -55,6 +59,12 @@ listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 listenSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 listenSocket.bind(('', port))
 listenSocket.listen(1)
+
+#Test for writing to fil
+logfile = sys.argv[2]
+file = open( logfile, 'w')
+file.write('hallo')
+file.close()
 
 # Then it's easy peasy from here on, just sit back and wait
 while True:
