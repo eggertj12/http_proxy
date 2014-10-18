@@ -125,7 +125,8 @@ def echoThread(connectionsocket, addr):
 #        print 'ipaddress is: ' + req.host_addr
 
         #Logging to file
-        log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : '
+        log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
+            + response.split()[1] + ' ' + response.split()[2]
         logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
         logging.warning(log)
             
