@@ -15,7 +15,7 @@ class Request:
     
 def parse_request_line(buf, req):
     sp = buf.split("\n", 1)
-    print "request_line: ", sp[0]
+#    print "request_line: ", sp[0]
     req.verb, req.path, req.version = sp[0].split(" ")
     return sp[1]
 
@@ -23,7 +23,7 @@ def parse_headers(buf, req):
     line, buf = buf.split("\n", 1)
     line = line.strip(" \n\r\t")
     while len(line) > 0:
-        print "line: ", line
+#       print "line: ", line
         splitted = line.split(':', 1)
         key = splitted[0].lower()
         value = splitted[1]
@@ -36,12 +36,12 @@ def parse_headers(buf, req):
             buf = "\n"
         # buf = buf.split("\n", 1)
         line = line.strip(" \n\r\t")
-        print buf
+#       print buf
     return buf
 
 def create_request(url):
     response = requests.get(url)
-    print "PRINTED RESPONSE " + response
+#    print "PRINTED RESPONSE " + response
     return response
 
 def get_dest_port(req):
@@ -53,17 +53,11 @@ def get_dest_port(req):
 
 def open_connection(req):
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    conn.connect((req.headers["host"], 80))
-#    conn = threading.Thread(target='mbl.is')
-#    conn.daemon = True
-#    conn.start()
-#    temp = create_request('http://mbl.is')
+    conn.connect((req.headers["host"], int(req.port)))
     return conn
 
 def create_response():
     pass
-
-
 
 ###################################################
 # Define a handler for threading
@@ -85,14 +79,12 @@ def echoThread(connectionsocket, addr):
         # empty list of sockets means a timeout occured
         if (len(readList) == 0):
             peer = connectionsocket.getpeername()
-            print 'connection closed after timeout: ' + str(peer[0]) + ':' + str(peer[1])
             break
 
         packet, addr1 = connectionsocket.recvfrom(buflen)
 
         # length of 0 means connection was closed
         if (len(packet) == 0):
-            print "connection closed"
             break
 
         req = Request()
@@ -106,37 +98,23 @@ def echoThread(connectionsocket, addr):
             break
 
         req.port = get_dest_port(req)
-
-#        print req.headers
-
-#        req.host_addr = socket.gethostbyname(req.headers['host'])
-        
         connection = open_connection(req)
         connection.send(packet)
         response = connection.recv(buflen)
-        lengd = len(response)
 
         #Logging to file
         log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
         + str(response.split()[1] + ' ' + str(response.split()[2]))
         logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
         logging.warning(log)
-        
+
+        lengd = len(response)
+        #Used to fetch from response until all data has been sent
         connectionsocket.send(response)
         if lengd == buflen:
-            while response:
+            while len(response)!= 0:
                 response = connection.recv(buflen)
                 connectionsocket.send(response)
-        #print "------------------------------------"
-        #print response
-        #print "------------------------------------"
-#        print req.headers
-
-#        req.host_addr = socket.gethostbyname(req.headers['host'])
-        
-#       print requestname
-#        print 'hostaddress is: ' + req.headers['host']
-#        print 'ipaddress is: ' + req.host_addr
             
     # All work done for thread, close socket
     connectionsocket.close()
@@ -170,6 +148,7 @@ try:
         thr.start()
 except timeout:
     print 'connection closed after timeout'
+    
 # clean up afterwards
 listenSocket.shutdown(2)
 listenSocket.close()
