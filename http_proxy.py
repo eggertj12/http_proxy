@@ -98,24 +98,35 @@ def echoThread(connectionsocket, addr):
             break
 
         req.port = get_dest_port(req)
-        connection = open_connection(req)
-        connection.send(packet)
-        response = connection.recv(buflen)
-
-        #Logging to file
-        log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
-        + str(response.split()[1] + ' ' + str(response.split()[2]))
-        logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
-        logging.warning(log)
-
-        lengd = len(response)
-        #Used to fetch from response until all data has been sent
-        connectionsocket.send(response)
-        if lengd == buflen:
-            while len(response)!= 0:
-                response = connection.recv(buflen)
-                connectionsocket.send(response)
+        try:
+            connection = open_connection(req)
+            connection.send(packet)
+            response = connection.recv(buflen)
+            print response
             
+            #Logging to file
+            log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
+            + str(response.split()[1] + ' ' + str(response.split()[2]))
+            logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
+            logging.warning(log)
+
+            lengd = len(response)
+            #Used to fetch from response until all data has been sent
+            connectionsocket.send(response)
+            if lengd == buflen:
+                while len(response)!= 0:
+                    response = connection.recv(buflen)
+                    connectionsocket.send(response)
+        except socket.gaierror, e:
+            response = 'HTTP/1.1 404 Not Found \n\n'
+            connectionsocket.send(response)
+
+            #Logging to file
+            log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
+            + str(response.split()[1] + ' ' + str(response.split()[2]))
+            logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
+            logging.warning(log)
+
     # All work done for thread, close socket
     connectionsocket.close()
 
