@@ -71,11 +71,60 @@ def open_connection(req):
     return conn
 
 def log(req, response, addr):
-    # log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
-    # + str(response.split()[1] + ' ' + str(response.split()[2]))
-    # logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
-    # logging.warning(log)
-    pass
+    code = str(response.split()[1])
+
+    if code == '200':
+        code = 'OK'
+    elif code == '301':
+        code = 'Moved Permanently'
+    elif code == '302':
+        code = 'Found'
+    elif code == '304':
+        code = 'Not Found'
+    elif code == '400':
+        code = 'Bad Request'
+    elif code == '401':
+        code = 'Unauthorized'
+    elif code == '402':
+        code = 'Payment Required'
+    elif code == '403':
+        code = 'Forbidden'
+    elif code == '404':
+        code = 'Not Found'
+    elif code == '405':
+        code = 'Method Not Allowed'
+    elif code == '406':
+        code = 'Not Acceptable'
+    elif code == '407':
+        code = 'Proxy Authentication Required'
+    elif code == '408':
+        code = 'Request Timeout'
+    elif code == '409':
+        code = 'Conflict'
+    elif code == '410':
+        code = 'Gone'
+    elif code == '411':
+        code = 'Length Required'
+    elif code == '412':
+        code = 'Precondition Failed'
+    elif code == '413':
+        code = 'Request Entity Too Large'
+    elif code == '414':
+        code = 'Request-URI Too Long'
+    elif code == '415':
+        code = 'Unsupported Media Type'
+    elif code == '416':
+        code = 'Requested Range Not Satisfiable'
+    elif code == '417':
+        code = 'Expectation Failed'
+    elif code == '500':
+        code = 'Internal Server Error'
+    else: code =  'OOoopps!'
+    
+    log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
+    + str(response.split()[1] + ' ' + code)
+    logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
+    logging.warning(log)
    
 
 ###################################################
@@ -119,47 +168,56 @@ def echoThread(connectionsocket, addr):
             break
 
         req.port = get_dest_port(req)
-        connection = open_connection(req)
 
-        request_string = create_request(req)
-        print request_string
-        connection.send(request_string)
-        print "request sent"
+        try:
+            connection = open_connection(req)
 
-        # TODO: send rest of message if available
+            request_string = create_request(req)
+            print request_string
+            connection.send(request_string)
+            print "request sent"
 
-        resp = Message()
+            # TODO: send rest of message if available
 
-        parse_response_line(connection, resp)
-        print "response line read"
-        parse_headers(connection, resp)
-        print "headers read"
+            resp = Message()
 
-        print resp.headers
+            parse_response_line(connection, resp)
+            print "response line read"
+            parse_headers(connection, resp)
+            print "headers read"
 
-        response = create_response(resp)
-        print response
+            print resp.headers
 
-        # print len(response)
-        # print "--------------------------------------------------"
-        # print response
-        # print "--------------------------------------------------"
+            response = create_response(resp)
+            print response
 
-        #Logging to file
-#        log(req, response, addr)
+            # print len(response)
+            # print "--------------------------------------------------"
+            # print response
+            # print "--------------------------------------------------"
 
-        lengd = int(resp.headers['content-length'])
-        print "lengd:", lengd
+            #Logging to file
+    #        log(req, response, addr)
 
-        #Used to fetch from response until all data has been sent
-        connectionsocket.send(response)
+            lengd = int(resp.headers['content-length'])
+            print "lengd:", lengd
 
-        read = 0
-        while read < lengd:
-            response = connection.recv(buflen)
-            read = read + len(response)
+            #Used to fetch from response until all data has been sent
             connectionsocket.send(response)
-            print "len(response), read, content-length", len(response), int(read), int(lengd)
+
+            read = 0
+            while read < lengd:
+                response = connection.recv(buflen)
+                read = read + len(response)
+                connectionsocket.send(response)
+                print "len(response), read, content-length", len(response), int(read), int(lengd)
+
+        except socket.gaierror, e:
+            response = 'HTTP/1.1 404 Not Found \n\n'
+            connectionsocket.send(response)
+
+            #Logging to file
+            log(req, response, addr)
 
         break
 
