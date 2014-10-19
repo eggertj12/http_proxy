@@ -70,12 +70,19 @@ def open_connection(req):
     conn.connect((req.headers["host"], int(req.port)))
     return conn
 
+def read_content_length(reading, writing, length):
+    read = 0
+    while read < length:
+        response = reading.recv(buflen)
+        read = read + len(response)
+        writing.send(response)
+
 def log(req, response, addr):
     log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
     + response.status + ' ' + response.text
     logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
     logging.warning(log)
-   
+
 
 ###################################################
 # Define a handler for threading
@@ -142,16 +149,12 @@ def echoThread(connectionsocket, addr):
             #Logging to file
             log(req, resp, addr)
 
-            lengd = int(resp.headers['content-length'])
+            length = int(resp.headers['content-length'])
 
             #Used to fetch from response until all data has been sent
             connectionsocket.send(response)
 
-            read = 0
-            while read < lengd:
-                response = connection.recv(buflen)
-                read = read + len(response)
-                connectionsocket.send(response)
+            read_content_length(connection, connectionsocket, length)
 
         except socket.gaierror, e:
             response = 'HTTP/1.1 404 Not Found \n\n'
