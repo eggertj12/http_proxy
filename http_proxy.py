@@ -104,7 +104,7 @@ def log(req, response, addr):
         code = 'Requested Range Not Satisfiable'
     elif code == '417':
         code = 'Expectation Failed'
-    elif code == '500'
+    elif code == '500':
         code = 'Internal Server Error'
     else: code =  'OOoopps!'
     
