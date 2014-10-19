@@ -77,6 +77,33 @@ def read_content_length(reading, writing, length):
         read = read + len(response)
         writing.send(response)
 
+def read_chunked(reading, writing):
+    chunk_line = read_line_from_socket(reading)
+    size = int(chunk_line.split(";", 1)[0], 16)
+
+    # TODO: check for trailing headers is chunk line
+    while size > 0:
+        print "chunk_line", chunk_line
+        print "size: ", size
+        read = 0
+        # +2 to get trailing \r\n
+        while read < size + 2:
+            writing.send(chunk_line + "\r\n")
+            response = reading.recv(buflen)
+            read = read + len(response)
+            writing.send(response)
+        chunk_line = read_line_from_socket(reading)
+        size = int(chunk_line.split(";", 1)[0], 16)
+
+    # TODO: check for trailer-part
+
+    # Read remaining stuff
+    line = read_line_from_socket(reading)
+    while len(line) > 0:
+        writing.send(line + "\r\n")
+        line = lineread_line_from_socket(reading)
+    return
+
 def log(req, response, addr):
     log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
     + response.status + ' ' + response.text
@@ -149,12 +176,19 @@ def echoThread(connectionsocket, addr):
             #Logging to file
             log(req, resp, addr)
 
-            length = int(resp.headers['content-length'])
-
             #Used to fetch from response until all data has been sent
             connectionsocket.send(response)
 
-            read_content_length(connection, connectionsocket, length)
+            if 'content-length' in resp.headers:
+                length = int(resp.headers['content-length'])
+                read_content_length(connection, connectionsocket, length)
+
+            elif 'transfer-encoding' in resp.headers:
+                tf_encoding = resp.headers['transfer-encoding']
+                print "transfer-encoding", tf_encoding
+                if "chunked" in tf_encoding.lower():
+                    read_chunked(connection, connectionsocket)
+
 
         except socket.gaierror, e:
             response = 'HTTP/1.1 404 Not Found \n\n'
