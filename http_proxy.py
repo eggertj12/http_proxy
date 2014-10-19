@@ -116,7 +116,7 @@ def log(req, response, addr):
 # Will serve each connection and then close socket
 ###################################################
 
-def echoThread(connectionsocket, addr):
+def connecion_handler(connectionsocket, addr):
 
     # print debug info
     print 'connection from: ' + str(addr[0]) + ':' + str(addr[1])
@@ -124,14 +124,14 @@ def echoThread(connectionsocket, addr):
     # Loop to handle multiple messages, and messages bigger than buffer size
     while True:
 
-        # # select blocks on list of sockets until reading / writing is available
-        # # or until timeout happens
-        # readList, writeList, errorList = select.select([connectionsocket], [], [], 30)
+        # select blocks on list of sockets until reading / writing is available
+        # or until timeout happens
+        readList, writeList, errorList = select.select([connectionsocket], [], [], 30)
 
-        # # empty list of sockets means a timeout occured
-        # if (len(readList) == 0):
-        #     peer = connectionsocket.getpeername()
-        #     break
+        # empty list of sockets means a timeout occured
+        if (len(readList) == 0):
+            peer = connectionsocket.getpeername()
+            break
 
 #        packet, addr1 = connectionsocket.recvfrom(buflen)
 
@@ -156,40 +156,6 @@ def echoThread(connectionsocket, addr):
         try:
             connection = open_connection(req)
 
-            request_string = create_request(req)
-            print request_string
-            connection.send(request_string)
-            print "request sent"
-
-            # TODO: send rest of message if available
-
-            resp = Message()
-
-            parse_response_line(connection, resp)
-            parse_headers(connection, resp)
-
-            print resp.headers
-
-            response = create_response(resp)
-            print response
-
-            #Logging to file
-            log(req, resp, addr)
-
-            #Used to fetch from response until all data has been sent
-            connectionsocket.send(response)
-
-            if 'content-length' in resp.headers:
-                length = int(resp.headers['content-length'])
-                read_content_length(connection, connectionsocket, length)
-
-            elif 'transfer-encoding' in resp.headers:
-                tf_encoding = resp.headers['transfer-encoding']
-                print "transfer-encoding", tf_encoding
-                if "chunked" in tf_encoding.lower():
-                    read_chunked(connection, connectionsocket)
-
-
         except socket.gaierror, e:
             response = 'HTTP/1.1 404 Not Found \n\n'
             connectionsocket.send(response)
@@ -201,10 +167,49 @@ def echoThread(connectionsocket, addr):
             #Logging to file
             log(req, resp, addr)
 
+            # Jump directly to cleanup
+            break
+
+        request_string = create_request(req)
+        print request_string
+        connection.send(request_string)
+        print "request sent"
+
+        # TODO: send rest of message if available
+
+        resp = Message()
+
+        parse_response_line(connection, resp)
+        parse_headers(connection, resp)
+
+        print resp.headers
+
+        response = create_response(resp)
+        print response
+
+        #Logging to file
+        log(req, resp, addr)
+
+        #Used to fetch from response until all data has been sent
+        connectionsocket.send(response)
+
+        if 'content-length' in resp.headers:
+            length = int(resp.headers['content-length'])
+            read_content_length(connection, connectionsocket, length)
+
+        elif 'transfer-encoding' in resp.headers:
+            tf_encoding = resp.headers['transfer-encoding']
+            print "transfer-encoding", tf_encoding
+            if "chunked" in tf_encoding.lower():
+                read_chunked(connection, connectionsocket)
+
+        # TODO: persistent connection
+        # Just close the socket and quit
+        connection.close()
         break
 
     print "leaving thread"            
-    # All work done for thread, close socket
+    # All work done for thread, close sockets
     connectionsocket.close()
 
 #################################################
@@ -218,6 +223,8 @@ if (len(sys.argv) != 3):
 
 port = int(sys.argv[1])
 
+threaded = True
+
 # Set up a listening socket for accepting connection
 listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 listenSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -230,11 +237,14 @@ try:
         connectionSocket, addr = listenSocket.accept()
         connectionSocket.settimeout(30)
 
-        # # dispatch to thread, set it as deamon as not to keep process alive
-        # thr = threading.Thread(target=echoThread, args=(connectionSocket, addr))
-        # thr.daemon = True
-        # thr.start()
-        echoThread(connectionSocket, addr)
+        if threaded:
+            # dispatch to thread, set it as deamon as not to keep process alive
+            thr = threading.Thread(target=connecion_handler, args=(connectionSocket, addr))
+            thr.daemon = True
+            thr.start()
+        else:
+            connecion_handler(connectionSocket, addr)
+
 except timeout:
     print 'connection closed after timeout'
     
