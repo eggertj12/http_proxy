@@ -56,8 +56,12 @@ def open_connection(req):
     conn.connect((req.headers["host"], int(req.port)))
     return conn
 
-def create_response():
-    pass
+def log(req, response, addr):
+    log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
+    + str(response.split()[1] + ' ' + str(response.split()[2]))
+    logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
+    logging.warning(log)
+   
 
 ###################################################
 # Define a handler for threading
@@ -103,10 +107,7 @@ def echoThread(connectionsocket, addr):
         response = connection.recv(buflen)
 
         #Logging to file
-        log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
-        + str(response.split()[1] + ' ' + str(response.split()[2]))
-        logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
-        logging.warning(log)
+        log(req, response, addr)
 
         lengd = len(response)
         #Used to fetch from response until all data has been sent
