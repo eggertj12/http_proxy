@@ -189,6 +189,15 @@ def connecion_handler(connectionsocket, addr):
 #        print "request sent"
 
         # TODO: send rest of message if available
+        if 'content-length' in req.headers:
+            length = int(req.headers['content-length'])
+            read_content_length(connectionsocket, connection, length)
+
+        elif 'transfer-encoding' in req.headers:
+            tf_encoding = req.headers['transfer-encoding']
+            print "transfer-encoding", tf_encoding
+            if "chunked" in tf_encoding.lower():
+                read_chunked(connectionsocket, connection)
 
         resp = Message()
 
