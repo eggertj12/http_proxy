@@ -5,6 +5,7 @@ import select
 import threading
 import datetime
 import logging
+from urlparse import urlsplit
 
 buflen = 4096
 
@@ -25,6 +26,12 @@ def parse_request_line(s, req):
     sp = read_line_from_socket(s)
 #    print "request_line: ", sp[0]
     req.verb, req.path, req.version = sp.split(" ")
+    o = urlsplit(req.path)
+    req.path = o.path
+    if len(o.query) > 0:
+        req.path += "?" + o.query
+    if len(o.fragment) > 0:
+        req.path += "#" + o.fragment
     return
 
 def parse_response_line(s, resp):
@@ -79,33 +86,39 @@ def read_content_length(reading, writing, length):
 
 def read_chunked(reading, writing):
     chunk_line = read_line_from_socket(reading)
+    print "chunk_line", repr(chunk_line)
     size = int(chunk_line.split(";", 1)[0], 16)
+    print "size: ", repr(size)
 
     # TODO: check for trailing headers is chunk line
     while size > 0:
-        print "chunk_line", chunk_line
-        print "size: ", size
         read = 0
         # +2 to get trailing \r\n
-        while read < size + 2:
+        while read < size:
             writing.send(chunk_line + "\r\n")
-            response = reading.recv(buflen)
+            response = reading.recv(min(buflen, size - read))
             read = read + len(response)
             writing.send(response)
+            print "size", repr(size), "read", repr(read)
         chunk_line = read_line_from_socket(reading)
-        size = int(chunk_line.split(";", 1)[0], 16)
+        print "chunk_line", repr(chunk_line)
+        if len(chunk_line) > 0:
+            size = int(chunk_line.split(";", 1)[0], 16)
+        else:
+            size = 0
+        print "size: ", repr(size)
 
     # TODO: check for trailer-part
 
-    # Read remaining stuff
-    line = read_line_from_socket(reading)
-    while len(line) > 0:
-        writing.send(line + "\r\n")
-        line = lineread_line_from_socket(reading)
+    # # Read remaining stuff
+    # line = read_line_from_socket(reading)
+    # while len(line) > 0:
+    #     writing.send(line + "\r\n")
+    #     line = read_line_from_socket(reading)
     return
 
 def log(req, response, addr):
-    log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.path + ' : ' \
+    log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.headers['host'] + req.path + ' : ' \
     + response.status + ' ' + response.text
     logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
     logging.warning(log)
@@ -171,9 +184,9 @@ def connecion_handler(connectionsocket, addr):
             break
 
         request_string = create_request(req)
-        print request_string
+#        print request_string
         connection.send(request_string)
-        print "request sent"
+#        print "request sent"
 
         # TODO: send rest of message if available
 
@@ -182,10 +195,10 @@ def connecion_handler(connectionsocket, addr):
         parse_response_line(connection, resp)
         parse_headers(connection, resp)
 
-        print resp.headers
+#        print resp.headers
 
         response = create_response(resp)
-        print response
+#        print response
 
         #Logging to file
         log(req, resp, addr)
