@@ -97,7 +97,7 @@ def read_content_length(reading, writing, length):
     while read < length:
         response = reading.recv(buflen)
         read = read + len(response)
-        writing.send(response)
+        writing.sendall(response)
 
 # Read data sent via chunked transfer-encoding
 # This is primitive and does not support all features yet
@@ -110,13 +110,13 @@ def read_chunked(reading, writing):
     # Loop while there are chunks
     while size > 0:
         # Start by sending the chunk size
-        writing.send(chunk_line + "\r\n")
+        writing.sendall(chunk_line + "\r\n")
 
         read = 0
         while read < size:
             response = reading.recv(min(buflen, size - read))
             read = read + len(response)
-            writing.send(response)
+            writing.sendall(response)
 
         # Try to read next chunk line, fall back to size zero in case server does not send terminating chunk
         chunk_line = read_line_from_socket(reading)
@@ -133,7 +133,7 @@ def read_chunked(reading, writing):
         # Most likely the connection has been closed by now
         # but there could be more to come
         try:
-            writing.send(line + "\r\n")
+            writing.sendall(line + "\r\n")
         except socket.error, e:
             pass
         line = read_line_from_socket(reading)
@@ -141,12 +141,16 @@ def read_chunked(reading, writing):
 
 # Determine if the connection is to be kept alive
 def is_persistent(req, resp):
+
+    # This is not correct according to the spec. Upstream and downstream should be handled seperately
+    # Probably close enough though for the time being
+
     # First check if server wants to close connection
     if (resp.version == 'HTTP/1.1'):
         if ('connection' in resp.headers) and ('close' in resp.headers['connection']):
             return False
 
-    elif (resp.version == 'HTTP/1.0'):
+    elif (resp.version == 'HTTP/1.0'):        
         if not ('connection' in resp.headers and 'keep-alive' in resp.headers['connection']):
             return False
     
@@ -159,10 +163,8 @@ def is_persistent(req, resp):
             return True
 
     elif (resp.version == 'HTTP/1.0'):
-        if not ('connection' in resp.headers and 'keep-alive' in resp.headers['connection']):
-            return False
-        else:
-            return True
+        # Proxies must not keep connections to 1.0 clients
+        return False
         
     # Unknown version, assume it is something newer than HTTP/1.1 and default to persistent
     return True
@@ -226,7 +228,7 @@ def connecion_handler(connectionsocket, addr):
         # Only a small subset of requests are supported
         if not req.verb in ('GET', 'POST', 'HEAD'):
             resp = create_error_response(req, '405', 'Method Not Allowed')
-            connectionsocket.send(create_response(resp))
+            connectionsocket.sendall(create_response(resp))
             log(req, resp, addr)
             # jump to cleanup
             break            
@@ -236,7 +238,7 @@ def connecion_handler(connectionsocket, addr):
         # host header is required
         if not ('host' in req.headers):
             resp = create_error_response(req, '400', 'Bad request')
-            connectionsocket.send(create_response(resp))
+            connectionsocket.sendall(create_response(resp))
             log(req, resp, addr)
             break            
 
@@ -249,14 +251,24 @@ def connecion_handler(connectionsocket, addr):
         # Blame it on the client and send a Bad request response
         except socket.gaierror, e:
             resp = create_error_response(req, '400', 'Bad request')
-            connectionsocket.send(create_response(resp))
+            connectionsocket.sendall(create_response(resp))
             log(req, resp, addr)
 
             # Jump directly to cleanup
             break
 
+        # Add required via header
+        if req.version[:5] == 'HTTP/':
+            ver = req.version[5:]
+        else:
+            ver = req.version
+        if 'via' in req.headers:
+            req.headers['via'] += ', ' + ver + ' p-p-p-proxy'
+        else:
+            req.headers['via'] = ver + ' p-p-p-proxy'
+
         request_string = create_request(req)
-        connection.send(request_string)
+        connection.sendall(request_string)
 
         # Send rest of message if available (POST data)
         if 'content-length' in req.headers:
@@ -281,7 +293,7 @@ def connecion_handler(connectionsocket, addr):
         log(req, resp, addr)
 
         # Send the response
-        connectionsocket.send(response)
+        connectionsocket.sendall(response)
 
         # Get the response data if any
         if 'content-length' in resp.headers:
