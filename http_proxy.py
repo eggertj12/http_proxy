@@ -18,13 +18,14 @@ def read_line_from_socket(s):
     line = ""
     c = ""
     while c != "\n":
+        sys.stdout.write(c)
         c = s.recv(1)
         line = line + c
     return line.strip(" \r\n\t")
 
 def parse_request_line(s, req):
     sp = read_line_from_socket(s)
-#    print "request_line: ", sp[0]
+    # print "request_line: ", sp
     req.verb, req.path, req.version = sp.split(" ")
     o = urlsplit(req.path)
     req.path = o.path
@@ -36,6 +37,7 @@ def parse_request_line(s, req):
 
 def parse_response_line(s, resp):
     sp = read_line_from_socket(s)
+    # print "response_line: ", sp
     resp.version, resp.status, resp.text = sp.split(" ", 2)
     return
 
@@ -86,36 +88,44 @@ def read_content_length(reading, writing, length):
 
 def read_chunked(reading, writing):
     chunk_line = read_line_from_socket(reading)
-    print "chunk_line", repr(chunk_line)
+    # print "chunk_line", repr(chunk_line)
     size = int(chunk_line.split(";", 1)[0], 16)
-    print "size: ", repr(size)
+    # print "size: ", repr(size)
 
     # TODO: check for trailing headers is chunk line
     while size > 0:
         read = 0
+        writing.send(chunk_line + "\r\n")
         # +2 to get trailing \r\n
         while read < size:
-            writing.send(chunk_line + "\r\n")
             response = reading.recv(min(buflen, size - read))
             read = read + len(response)
             writing.send(response)
-            print "size", repr(size), "read", repr(read)
+            # print "size", repr(size), "read", repr(read)
         chunk_line = read_line_from_socket(reading)
-        print "chunk_line", repr(chunk_line)
+        # print "chunk_line", repr(chunk_line)
         if len(chunk_line) > 0:
             size = int(chunk_line.split(";", 1)[0], 16)
         else:
             size = 0
-        print "size: ", repr(size)
+        # print "size: ", repr(size)
 
     # TODO: check for trailer-part
 
-    # # Read remaining stuff
-    # line = read_line_from_socket(reading)
-    # while len(line) > 0:
-    #     writing.send(line + "\r\n")
-    #     line = read_line_from_socket(reading)
+    # Read remaining stuff
+    line = read_line_from_socket(reading)
+    while len(line) > 0:
+        # Most likely the connection has been closed by now
+        # but there could be more to come
+        try:
+            writing.send(line + "\r\n")
+        except socket.error, e:
+            pass
+        line = read_line_from_socket(reading)
     return
+
+def is_persistent(req):
+    return False
 
 def log(req, response, addr):
     log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' + req.verb + ' ' + req.headers['host'] + req.path + ' : ' \
@@ -138,8 +148,8 @@ def connecion_handler(connectionsocket, addr):
     while True:
 
         # select blocks on list of sockets until reading / writing is available
-        # or until timeout happens
-        readList, writeList, errorList = select.select([connectionsocket], [], [], 30)
+        # or until timeout happens, set timeout of 5 seconds for persistent connections
+        readList, writeList, errorList = select.select([connectionsocket], [], [], 5)
 
         # empty list of sockets means a timeout occured
         if (len(readList) == 0):
@@ -157,6 +167,12 @@ def connecion_handler(connectionsocket, addr):
         req = Message()
 
         parse_request_line(connectionsocket, req)
+
+        # Only a small subset of requests are supported
+        if not req.verb in ('GET', 'POST', 'HEAD'):
+            print 'unsupported http method'
+            break            
+
         parse_headers(connectionsocket, req)
 
         # host header is required
@@ -195,7 +211,7 @@ def connecion_handler(connectionsocket, addr):
 
         elif 'transfer-encoding' in req.headers:
             tf_encoding = req.headers['transfer-encoding']
-            print "transfer-encoding", tf_encoding
+            # print "transfer-encoding", tf_encoding
             if "chunked" in tf_encoding.lower():
                 read_chunked(connectionsocket, connection)
 
@@ -221,14 +237,14 @@ def connecion_handler(connectionsocket, addr):
 
         elif 'transfer-encoding' in resp.headers:
             tf_encoding = resp.headers['transfer-encoding']
-            print "transfer-encoding", tf_encoding
+            # print "transfer-encoding", tf_encoding
             if "chunked" in tf_encoding.lower():
                 read_chunked(connection, connectionsocket)
 
         # TODO: persistent connection
-        # Just close the socket and quit
-        connection.close()
-        break
+        if not is_persistent(req):
+            connection.close()
+            break
 
     print "leaving thread"            
     # All work done for thread, close sockets
@@ -245,14 +261,14 @@ if (len(sys.argv) != 3):
 
 port = int(sys.argv[1])
 
-threaded = True
+threaded = False
 
 # Set up a listening socket for accepting connection
 listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 listenSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 listenSocket.bind(('', port))
 try:
-    listenSocket.listen(1)
+    listenSocket.listen(20)
 
     # Then it's easy peasy from here on, just sit back and wait
     while True:
