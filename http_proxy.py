@@ -9,6 +9,8 @@ from urlparse import urlsplit
 
 buflen = 4096
 
+#---------------------------------------------------------------------------------------------
+
 # A simple class to hold request / response messages
 class Message:
     """ Class to hold request info """
@@ -19,6 +21,79 @@ class Message:
         self.status = ''
         self.text = ''
         self.headers = {}
+
+#---------------------------------------------------------------------------------------------
+
+# A buffered reader of a socket
+# Supplies both a line by line reading and also block reading
+class SocketReader:
+    """ Class to hold request info """
+    def __init__(self, sock):
+        self.socket = sock
+        self.buffer = ''
+
+    # This method should read the whole input line by line until connection closes
+    # Based on concept from here: http://synack.me/blog/using-python-tcp-sockets
+    def readlines(self, delim='\n', recv_buffer=buflen):
+        data = True
+        while data:
+            data = self.socket.recv(recv_buffer)
+            self.buffer += data
+
+            while self.buffer.find(delim) != -1:
+                line, self.buffer = self.buffer.split(delim, 1)
+                yield line
+        return
+
+    def readline(self, delim='\n', recv_buffer=buflen):
+
+        # check if we have a line available in buffer and return it if so
+        if len(self.buffer) > 0 and self.buffer.find(delim) != -1:
+            line, self.buffer = self.buffer.split('\n', 1)
+            return line.strip(" \r\n\t")
+
+        data = True
+        while data:
+            data = self.socket.recv(recv_buffer)
+            if len(data) == 0:
+                # TODO: handle closed socket
+                pass
+
+            self.buffer += data
+
+            if self.buffer.find(delim) != -1:
+                line, self.buffer = self.buffer.split('\n', 1)
+                return line.strip(" \r\n\t")
+        return
+
+    def recv(self, recv_buffer=buflen):
+        data = ''
+        print 'Trying to read ' + str(recv_buffer) + ' bytes'
+        # check if we have enough data in buffer
+        if len(self.buffer) > recv_buffer:
+            data = self.buffer[:recv_buffer]
+            self.buffer = self.buffer[recv_buffer:]
+            return data
+
+        data = self.socket.recv(recv_buffer)
+        if len(data) == 0:
+            # TODO: handle closed socket
+            return self.buffer
+
+        self.buffer += data
+
+        if len(self.buffer) > recv_buffer:
+            data = self.buffer[:recv_buffer]
+            self.buffer = self.buffer[:recv_buffer]
+        else:
+            data = self.buffer
+            self.buffer = ''
+
+        # print "Returning:"
+        # print data
+        return data
+
+#---------------------------------------------------------------------------------------------
 
 # This is really unefficient it seems
 # TODO: implement a buffered version somehow
@@ -32,7 +107,7 @@ def read_line_from_socket(s):
 
 # Get the first line of a request and split into parts
 def parse_request_line(s, req):
-    sp = read_line_from_socket(s)
+    sp = s.readline()
     # print "request_line: ", sp
     req.verb, req.path, req.version = sp.split(" ")
     o = urlsplit(req.path)
@@ -45,20 +120,20 @@ def parse_request_line(s, req):
 
 # Get the first line of a response and split into parts
 def parse_response_line(s, resp):
-    sp = read_line_from_socket(s)
+    sp = s.readline()
     # print "response_line: ", sp
     resp.version, resp.status, resp.text = sp.split(" ", 2)
     return
 
 # Read the headers line by line and store in dictionary
 def parse_headers(s, req):
-    line = read_line_from_socket(s)
+    line = s.readline()
     while len(line) > 0:
         splitted = line.split(':', 1)
         key = splitted[0].lower()
         value = splitted[1]
         req.headers[key] = value.strip(" \n\r\t")
-        line = read_line_from_socket(s)
+        line = s.readline()
     return
 
 # Rebuild the request to send to server
@@ -102,7 +177,7 @@ def read_content_length(reading, writing, length):
 # Read data sent via chunked transfer-encoding
 # This is primitive and does not support all features yet
 def read_chunked(reading, writing):
-    chunk_line = read_line_from_socket(reading)
+    chunk_line = reading.readline()
     size = int(chunk_line.split(";", 1)[0], 16)
 
     # TODO: check for trailing headers is chunk line
@@ -119,7 +194,7 @@ def read_chunked(reading, writing):
             writing.sendall(response)
 
         # Try to read next chunk line, fall back to size zero in case server does not send terminating chunk
-        chunk_line = read_line_from_socket(reading)
+        chunk_line = reading.readline()
         if len(chunk_line) > 0:
             size = int(chunk_line.split(";", 1)[0], 16)
         else:
@@ -128,7 +203,7 @@ def read_chunked(reading, writing):
     # TODO: check for trailer-part
 
     # Read remaining stuff
-    line = read_line_from_socket(reading)
+    line = reading.readline()
     while len(line) > 0:
         # Most likely the connection has been closed by now
         # but there could be more to come
@@ -136,7 +211,7 @@ def read_chunked(reading, writing):
             writing.sendall(line + "\r\n")
         except socket.error, e:
             pass
-        line = read_line_from_socket(reading)
+        line = reading.readline()
     return
 
 # Determine if the connection is to be kept alive
@@ -223,7 +298,8 @@ def connecion_handler(connectionsocket, addr):
         # Create a message object for the request
         req = Message()
 
-        parse_request_line(connectionsocket, req)
+        downstream = SocketReader(connectionsocket)
+        parse_request_line(downstream, req)
 
         # Only a small subset of requests are supported
         if not req.verb in ('GET', 'POST', 'HEAD'):
@@ -233,7 +309,7 @@ def connecion_handler(connectionsocket, addr):
             # jump to cleanup
             break            
 
-        parse_headers(connectionsocket, req)
+        parse_headers(downstream, req)
 
         # host header is required
         if not ('host' in req.headers):
@@ -270,24 +346,29 @@ def connecion_handler(connectionsocket, addr):
         request_string = create_request(req)
         connection.sendall(request_string)
 
+        print request_string
+
         # Send rest of message if available (POST data)
         if 'content-length' in req.headers:
             length = int(req.headers['content-length'])
-            read_content_length(connectionsocket, connection, length)
+            read_content_length(downstream, connection, length)
 
         elif 'transfer-encoding' in req.headers:
             tf_encoding = req.headers['transfer-encoding']
             # print "transfer-encoding", tf_encoding
             if "chunked" in tf_encoding.lower():
-                read_chunked(connectionsocket, connection)
+                read_chunked(downstream, connection)
 
         # Now on to handling the response
         resp = Message()
 
-        parse_response_line(connection, resp)
-        parse_headers(connection, resp)
+        upstream = SocketReader(connection)
+        parse_response_line(upstream, resp)
+        parse_headers(upstream, resp)
 
         response = create_response(resp)
+
+        print response
 
         #Logging to file
         log(req, resp, addr)
@@ -298,12 +379,12 @@ def connecion_handler(connectionsocket, addr):
         # Get the response data if any
         if 'content-length' in resp.headers:
             length = int(resp.headers['content-length'])
-            read_content_length(connection, connectionsocket, length)
+            read_content_length(upstream, connectionsocket, length)
 
         elif 'transfer-encoding' in resp.headers:
             tf_encoding = resp.headers['transfer-encoding']
             if "chunked" in tf_encoding.lower():
-                read_chunked(connection, connectionsocket)
+                read_chunked(upstream, connectionsocket)
 
         # Check if the connection should be kept alive, cleanup otherwise
         if not is_persistent(req, resp):
