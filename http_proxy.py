@@ -6,6 +6,9 @@ import threading
 import datetime
 import logging
 from urlparse import urlsplit
+import base64
+import email.utils as eut
+import os
 
 buflen = 4096
 
@@ -191,6 +194,32 @@ def log(req, response, addr):
     logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
     logging.warning(log)
 
+#Saving data to cache
+def cache_file(url, filename, expire_date, data):
+    #
+    date = str.replace(str(eut.parsedate(expire_date)), ', ','_')
+    print filename
+    #os.makedirs('cache/' + url)
+    os.chdir('cache/' + url)
+    file = open(date + base64.standard_b64encode(filename), "a")
+    file.write(data)
+    file.close()
+    os.chdir('..')
+    os.chdir('..')
+    # CREATE folder cache
+    # save data
+
+#Check if data is on proxy
+def is_in_cache(url, filename):
+    if not os.path.exists('cache'):
+        os.makedirs('cache')
+    if not os.path.exists(url):
+        os.makedirs(url)
+
+    # if os.path.isfile('cache\\' + url +'\\'+ base64.standard_b64encode(filename))
+    # If data is in cache return file
+    # Del
+    return
 
 ###################################################
 # Define a handler for threading
@@ -288,6 +317,14 @@ def connecion_handler(connectionsocket, addr):
         parse_headers(connection, resp)
 
         response = create_response(resp)
+
+        ############# NOT FINISHED
+        # Cache data from server
+
+        #if ('expires' in resp.headers):
+        #    cache_file(req.headers['host'], req.path, resp.headers['expires'], "hallo world")
+
+        ##############
 
         #Logging to file
         log(req, resp, addr)
