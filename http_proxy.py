@@ -7,7 +7,8 @@ import datetime
 import logging
 from urlparse import urlsplit
 
-buflen = 4096
+# Shared global variable, DO NOT WRITE TO
+BUFLEN = 4096
 
 #---------------------------------------------------------------------------------------------
 
@@ -34,7 +35,7 @@ class SocketReader:
 
     # This method should read the whole input line by line until connection closes
     # Based on concept from here: http://synack.me/blog/using-python-tcp-sockets
-    def readlines(self, delim='\n', recv_buffer=buflen):
+    def readlines(self, delim='\n', recv_buffer=BUFLEN):
         data = True
         while data:
             data = self.socket.recv(recv_buffer)
@@ -45,7 +46,7 @@ class SocketReader:
                 yield line
         return
 
-    def readline(self, delim='\n', recv_buffer=buflen):
+    def readline(self, delim='\n', recv_buffer=BUFLEN):
 
         # check if we have a line available in buffer and return it if so
         if len(self.buffer) > 0 and self.buffer.find(delim) != -1:
@@ -66,31 +67,61 @@ class SocketReader:
                 return line.strip(" \r\n\t")
         return
 
-    def recv(self, recv_buffer=buflen):
+    def recv(self, recv_buffer=BUFLEN):
         data = ''
-        print 'Trying to read ' + str(recv_buffer) + ' bytes'
+        print 'Trying to read ' + str(recv_buffer) + ' bytes. Current buffer size ' + str(len(self.buffer))
         # check if we have enough data in buffer
         if len(self.buffer) > recv_buffer:
             data = self.buffer[:recv_buffer]
             self.buffer = self.buffer[recv_buffer:]
+            print "read from buffer"
+            print "returning " + str(len(data)) + " bytes. Current buffer size " + str(len(self.buffer))
             return data
 
         data = self.socket.recv(recv_buffer)
+        print "read " + str(len(data)) + "bytes"
         if len(data) == 0:
             # TODO: handle closed socket
-            return self.buffer
+            data = self.buffer
+            self.buffer = '';
+            print "Nothing recv-ed"
+            print "returning " + str(len(data)) + " bytes. Current buffer size " + str(len(self.buffer))
+            return data
 
         self.buffer += data
 
         if len(self.buffer) > recv_buffer:
+            print "read more than enough, bytes read: " + str(len(data))
             data = self.buffer[:recv_buffer]
             self.buffer = self.buffer[:recv_buffer]
         else:
             data = self.buffer
             self.buffer = ''
+            print "Read <= requested"
 
-        # print "Returning:"
-        # print data
+        print "returning " + str(len(data)) + " bytes. Current buffer size " + str(len(self.buffer))
+        return data
+
+    def read_bytes(self, bytes):
+        data = ''
+        print 'Trying to read ' + str(bytes) + ' bytes'
+        # check if we have enough data in buffer
+        if len(self.buffer) > bytes:
+            data = self.buffer[:bytes]
+            self.buffer = self.buffer[bytes:]
+            return data
+
+        while len(self.buffer) < bytes:
+
+            data = self.socket.recv(min(BUFLEN, bytes - len(self.buffer)))
+            if len(data) == 0:
+                # TODO: handle closed socket
+                return self.buffer
+
+            self.buffer += data
+
+        data = self.buffer
+        self.buffer = ''
         return data
 
 #---------------------------------------------------------------------------------------------
@@ -170,7 +201,7 @@ def open_connection(req):
 def read_content_length(reading, writing, length):
     read = 0
     while read < length:
-        response = reading.recv(buflen)
+        response = reading.recv(BUFLEN)
         read = read + len(response)
         writing.sendall(response)
 
@@ -189,7 +220,7 @@ def read_chunked(reading, writing):
 
         read = 0
         while read < size:
-            response = reading.recv(min(buflen, size - read))
+            response = reading.recv(min(BUFLEN, size - read))
             read = read + len(response)
             writing.sendall(response)
 
@@ -346,8 +377,6 @@ def connecion_handler(connectionsocket, addr):
         request_string = create_request(req)
         connection.sendall(request_string)
 
-        print request_string
-
         # Send rest of message if available (POST data)
         if 'content-length' in req.headers:
             length = int(req.headers['content-length'])
@@ -367,8 +396,6 @@ def connecion_handler(connectionsocket, addr):
         parse_headers(upstream, resp)
 
         response = create_response(resp)
-
-        print response
 
         #Logging to file
         log(req, resp, addr)
@@ -406,7 +433,7 @@ if (len(sys.argv) != 3):
 
 port = int(sys.argv[1])
 
-threaded = True
+threaded = False
 
 # Set up a listening socket for accepting connection
 listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
