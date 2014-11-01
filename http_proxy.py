@@ -24,8 +24,7 @@ class Message:
         self.persistent = False
         self.headers = {}
 
-# This is really unefficient it seems
-# TODO: implement a buffered version somehow
+# Read one text line from socket
 def read_line_from_socket(s):
     line = ""
     c = ""
@@ -43,8 +42,10 @@ def read_line_from_socket(s):
 # Get the first line of a request and split into parts
 def parse_request_line(s, req):
     sp = read_line_from_socket(s)
-    print "request_line: ", sp
+    # print "request_line: ", sp
     req.verb, req.path, req.version = sp.split(" ")
+
+    # Trim host part from request path and rebuild query string if available
     o = urlsplit(req.path)
     req.path = o.path
     if len(o.query) > 0:
@@ -56,7 +57,7 @@ def parse_request_line(s, req):
 # Get the first line of a response and split into parts
 def parse_response_line(s, resp):
     sp = read_line_from_socket(s)
-    print "response_line: ", sp
+    # print "response_line: ", sp
     resp.version, resp.status, resp.text = sp.split(" ", 2)
     return
 
@@ -87,7 +88,7 @@ def create_response(resp):
     response = response + "\r\n"
     return response
 
-# Parse host value for port number. Defaults to 80 on not found
+# Parse host string from request for port number. Defaults to 80 on not found
 def get_dest_port(req):
     if ':' in req.headers['host']:
         req.headers['host'], port = req.headers['host'].split(':')
@@ -111,14 +112,9 @@ def read_content_length(reading, writing, length):
 
 
 # Read data sent via chunked transfer-encoding
-# This is primitive and does not support all features yet
 def read_chunked(reading, writing):
     chunk_line = read_line_from_socket(reading)
     size = int(chunk_line.split(";", 1)[0], 16)
-
-    # TODO: check for trailing headers is chunk line
-
-    print "first chunk size: ", size
 
     # Loop while there are chunks
     while size > 0:
@@ -128,13 +124,13 @@ def read_chunked(reading, writing):
         read = 0
         while read < size:
             response = reading.recv(min(buflen, size - read))
-            print response
             read = read + len(response)
             writing.sendall(response)
 
         # Try to read next chunk line, fall back to size zero in case server does not send terminating chunk
         chunk_line = read_line_from_socket(reading)
 
+        # Read again on 0 length which can be caused by terminating \r\n of chunk data
         if len(chunk_line) == 0:
             chunk_line = read_line_from_socket(reading)
 
@@ -143,16 +139,10 @@ def read_chunked(reading, writing):
         else:
             size = 0
 
-        print "chunk line: ", chunk_line
-        print "chunk size: ", size
-
     # Send final 0 size chunk to recipient
     writing.sendall(chunk_line + "\r\n")
 
-
-    # TODO: check for trailer-part
-
-    # Read remaining stuff
+    # Read trailer-part and forward it blindly
     line = read_line_from_socket(reading)
     while len(line) > 0:
         # Most likely the connection has been closed by now
@@ -161,22 +151,24 @@ def read_chunked(reading, writing):
             writing.sendall(line + "\r\n")
         except socket.error, e:
             pass
+
         line = read_line_from_socket(reading)
     return
 
 # Determine if the connection is to be kept alive
 def is_persistent(msg):
 
-    # First check if server wants to close connection
+    # HTTP/1.1 is persistent unless connection: close header is sent
     if (msg.version == 'HTTP/1.1'):
-        if ('connection' in msg.headers) and ('close' in msg.headers['connection']):
+        if ('connection' in msg.headers) and ('close' in msg.headers['connection'].lower()):
             return False
 
+    # HTTP/1.0 is not persistent unless connection: keep-alive header is sent
     elif (msg.version == 'HTTP/1.0'):        
-        if not ('connection' in msg.headers and 'keep-alive' in msg.headers['connection']):
+        if not ('connection' in msg.headers and 'keep-alive' in msg.headers['connection'].lower()):
             return False
 
-    # Unknown version, assume it is something newer than HTTP/1.1 and default to persistent
+    # Assume it is persistent since we have not found otherwise
     return True
 
 
@@ -232,7 +224,6 @@ def is_in_cache(url, filename):
             return content
     return None
 
-###
 # Handle request
 def read_request(request_queue, client_socket, server_socket):
     # Create a message object for the request
@@ -267,8 +258,6 @@ def read_request(request_queue, client_socket, server_socket):
         resp = create_error_response(req, '400', 'Bad request')
         client_socket.sendall(create_response(resp))
         log(req, resp, addr)
-
-        # Jump directly to cleanup
         raise IOError('Could not open server connection')
 
     # Add required via header
@@ -302,21 +291,14 @@ def read_request(request_queue, client_socket, server_socket):
 
     return server_socket
 
-###
 # Handle response
-def read_response(req, client_socket, server_socket):
-    # Now on to handling the response
-    resp = Message()
-
-    parse_response_line(server_socket, resp)
-    parse_headers(server_socket, resp)
+def read_response(req, resp, client_socket, server_socket):
 
     response = create_response(resp)
 
     #Logging to file
     log(req, resp, addr)
 
-    # Send the response
     client_socket.sendall(response)
 
     resp.persistent = is_persistent(resp)
@@ -352,7 +334,7 @@ def connecion_handler(client_socket, addr):
     while True:
 
         # select blocks on list of sockets until reading / writing is available
-        # or until timeout happens, set timeout of 5 seconds for dropped connections
+        # or until timeout happens, set timeout of 30 seconds for dropped connections
         if server_socket != None:
             socketList = [client_socket, server_socket]
         else:
@@ -360,15 +342,13 @@ def connecion_handler(client_socket, addr):
 
         readList, writeList, errorList = select.select(socketList, [], [], 30)
 
-
         # empty list of sockets means a timeout occured
         if (len(readList) == 0):
             peer = client_socket.getpeername()
             break
 
         if (client_socket in readList):
-            print "reading client_socket", readList
-
+            # print "reading client_socket", readList
             try:
                 server_socket = read_request(request_queue, client_socket, server_socket)
             except BufferError, e:
@@ -378,30 +358,32 @@ def connecion_handler(client_socket, addr):
                 print e.message
                 break
 
-            # returns None on cached response
+            # returns None on cached response, then just loop to listening again
             if server_socket == None:
                 continue
 
-            req = request_queue[0]
-            request_queue = request_queue[1:]
-
         elif (server_socket in readList):
-            print "reading server_socket", readList
+            # print "reading server_socket", readList
+
+            resp = Message()
 
             try:
-                resp = read_response(req, client_socket, server_socket)
+                parse_response_line(server_socket, resp)
+                parse_headers(server_socket, resp)
             except BufferError, e:
                 print "server closed connection"
                 break
 
+            # read the oldest request off of the queue
+            req = request_queue[0]
+            request_queue = request_queue[1:]
+
+            resp = read_response(req, resp, client_socket, server_socket)
+
         # Check if the server_socket should be kept alive, cleanup otherwise
-        if not req.persistent:
+        if len(request_queue) == 0 and req != None and not req.persistent:
             server_socket.close()
             break
-
-#        break
-
-
 
     print "leaving thread"            
     # All work done for thread, close sockets
