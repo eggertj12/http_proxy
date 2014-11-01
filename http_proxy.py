@@ -34,7 +34,7 @@ def read_line_from_socket(s):
 
         # 0 length read means the connection was closed
         if c == "":
-            raise IOError('Nothing to read')
+            raise BufferError('Nothing to read')
 
         line = line + c
 
@@ -245,8 +245,7 @@ def read_request(request_queue, client_socket, server_socket):
         resp = create_error_response(req, '405', 'Method Not Allowed')
         client_socket.sendall(create_response(resp))
         log(req, resp, addr)
-        # jump to cleanup
-        return None            
+        raise IOError('Invalid method')
 
     parse_headers(client_socket, req)
 
@@ -255,7 +254,7 @@ def read_request(request_queue, client_socket, server_socket):
         resp = create_error_response(req, '400', 'Bad request')
         client_socket.sendall(create_response(resp))
         log(req, resp, addr)
-        return None            
+        raise IOError('Missing host header')
 
     req.port = get_dest_port(req)
 
@@ -270,7 +269,7 @@ def read_request(request_queue, client_socket, server_socket):
         log(req, resp, addr)
 
         # Jump directly to cleanup
-        return None
+        raise IOError('Could not open server connection')
 
     # Add required via header
     if req.version[:5] == 'HTTP/':
@@ -352,7 +351,6 @@ def connecion_handler(client_socket, addr):
     # Loop to handle persistent connections
     while True:
 
-
         # select blocks on list of sockets until reading / writing is available
         # or until timeout happens, set timeout of 5 seconds for dropped connections
         if server_socket != None:
@@ -373,14 +371,16 @@ def connecion_handler(client_socket, addr):
 
             try:
                 server_socket = read_request(request_queue, client_socket, server_socket)
-            except IOError, e:
+            except BufferError, e:
                 print "client closed connection"
                 break
-
-
-            # returns None on any error
-            if server_socket == None:
+            except IOError, e:
+                print e.message
                 break
+
+            # returns None on cached response
+            if server_socket == None:
+                continue
 
             req = request_queue[0]
             request_queue = request_queue[1:]
@@ -390,7 +390,7 @@ def connecion_handler(client_socket, addr):
 
             try:
                 resp = read_response(req, client_socket, server_socket)
-            except IOError, e:
+            except BufferError, e:
                 print "server closed connection"
                 break
 
