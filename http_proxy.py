@@ -102,6 +102,7 @@ def read_content_length(reading, writing, length):
         read = read + len(response)
         writing.sendall(response)
 
+
 # Read data sent via chunked transfer-encoding
 # This is primitive and does not support all features yet
 def read_chunked(reading, writing):
@@ -195,31 +196,34 @@ def log(req, response, addr):
     logging.warning(log)
 
 #Saving data to cache
-def cache_file(url, filename, expire_date, data):
-    #
+def cache_file(url, filename, expire_date, data):  
     date = str.replace(str(eut.parsedate(expire_date)), ', ','_')
     print filename
-    #os.makedirs('cache/' + url)
     os.chdir('cache/' + url)
     file = open(date + base64.standard_b64encode(filename), "a")
     file.write(data)
     file.close()
     os.chdir('..')
     os.chdir('..')
-    # CREATE folder cache
-    # save data
 
 #Check if data is on proxy
 def is_in_cache(url, filename):
     if not os.path.exists('cache'):
         os.makedirs('cache')
+        os.chdir('cache')
     if not os.path.exists(url):
         os.makedirs(url)
+        os.chdir('..')
+        return None
 
-    # if os.path.isfile('cache\\' + url +'\\'+ base64.standard_b64encode(filename))
-    # If data is in cache return file
-    # Del
-    return
+    searchfile = base64.standard_b64encode(filename)[:29]
+    for file in os.listdir('cache\\' + url +'\\'):
+        if file.endswith(searchfile):
+            myfile = open('cache\\' + url +'\\' + file, 'r')
+            content  = myfile.read()
+            myfile.close()
+            return content
+    return None
 
 ###################################################
 # Define a handler for threading
