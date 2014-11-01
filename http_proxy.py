@@ -18,6 +18,7 @@ class Message:
         self.version = ''
         self.status = ''
         self.text = ''
+        self.persistent = False
         self.headers = {}
 
 # This is really unefficient it seems
@@ -27,13 +28,19 @@ def read_line_from_socket(s):
     c = ""
     while c != "\n":
         c = s.recv(1)
+
+        # 0 length read means the connection was closed
+        if c == "":
+            raise IOError('Nothing to read')
+
         line = line + c
+
     return line.strip(" \r\n\t")
 
 # Get the first line of a request and split into parts
 def parse_request_line(s, req):
     sp = read_line_from_socket(s)
-    # print "request_line: ", sp
+    print "request_line: ", sp
     req.verb, req.path, req.version = sp.split(" ")
     o = urlsplit(req.path)
     req.path = o.path
@@ -46,7 +53,7 @@ def parse_request_line(s, req):
 # Get the first line of a response and split into parts
 def parse_response_line(s, resp):
     sp = read_line_from_socket(s)
-    # print "response_line: ", sp
+    print "response_line: ", sp
     resp.version, resp.status, resp.text = sp.split(" ", 2)
     return
 
@@ -125,6 +132,10 @@ def read_chunked(reading, writing):
         else:
             size = 0
 
+    # Send final 0 size chunk to recipient
+    writing.sendall(chunk_line + "\r\n")
+
+
     # TODO: check for trailer-part
 
     # Read remaining stuff
@@ -140,34 +151,20 @@ def read_chunked(reading, writing):
     return
 
 # Determine if the connection is to be kept alive
-def is_persistent(req, resp):
-
-    # This is not correct according to the spec. Upstream and downstream should be handled seperately
-    # Probably close enough though for the time being
+def is_persistent(msg):
 
     # First check if server wants to close connection
-    if (resp.version == 'HTTP/1.1'):
-        if ('connection' in resp.headers) and ('close' in resp.headers['connection']):
+    if (msg.version == 'HTTP/1.1'):
+        if ('connection' in msg.headers) and ('close' in msg.headers['connection']):
             return False
 
-    elif (resp.version == 'HTTP/1.0'):        
-        if not ('connection' in resp.headers and 'keep-alive' in resp.headers['connection']):
+    elif (msg.version == 'HTTP/1.0'):        
+        if not ('connection' in msg.headers and 'keep-alive' in msg.headers['connection']):
             return False
-    
-    # Made it here, assume server wants a persistent connection
-    # Then check client request
-    if (resp.version == 'HTTP/1.1'):
-        if ('connection' in resp.headers) and ('close' in resp.headers['connection']):
-            return False
-        else:
-            return True
 
-    elif (resp.version == 'HTTP/1.0'):
-        # Proxies must not keep connections to 1.0 clients
-        return False
-        
     # Unknown version, assume it is something newer than HTTP/1.1 and default to persistent
     return True
+
 
 # Helper to create a response in case of error
 def create_error_response(req, status, message):
@@ -242,6 +239,8 @@ def read_request(request_queue, client_socket, server_socket):
     else:
         req.headers['via'] = ver + ' p-p-p-proxy'
 
+    req.persistent = is_persistent(req)
+
     # Request object is ready push to queue
     request_queue.append(req)
 
@@ -278,6 +277,8 @@ def read_response(req, client_socket, server_socket):
     # Send the response
     client_socket.sendall(response)
 
+    resp.persistent = is_persistent(resp)
+
     # Get the response data if any
     if 'content-length' in resp.headers:
         length = int(resp.headers['content-length'])
@@ -299,7 +300,7 @@ def read_response(req, client_socket, server_socket):
 def connecion_handler(client_socket, addr):
 
     # print debug info
-    print 'connection from: ' + str(addr[0]) + ':' + str(addr[1])
+    print 'entering thread, connection from: ' + str(addr[0]) + ':' + str(addr[1])
 
     server_socket = None
     request_queue = []
@@ -316,7 +317,6 @@ def connecion_handler(client_socket, addr):
         else:
             socketList = [client_socket]
 
-        print "socketList:", socketList
         readList, writeList, errorList = select.select(socketList, [], [], 30)
 
 
@@ -325,28 +325,35 @@ def connecion_handler(client_socket, addr):
             peer = client_socket.getpeername()
             break
 
-        # length of 0 means connection was closed
-
-        # TODO: detect closecd connection
-        # if (len(packet) == 0):
-        #     break
-
         if (client_socket in readList):
-            server_socket = read_request(request_queue, client_socket, server_socket)
+            print "reading client_socket", readList
+
+            try:
+                server_socket = read_request(request_queue, client_socket, server_socket)
+            except IOError, e:
+                print "client closed connection"
+                break
+
 
             # returns None on any error
             if server_socket == None:
                 break
 
-        elif (server_socket in readList):
             req = request_queue[0]
             request_queue = request_queue[1:]
 
-            resp = read_response(req, client_socket, server_socket)
+        elif (server_socket in readList):
+            print "reading server_socket", readList
+
+            try:
+                resp = read_response(req, client_socket, server_socket)
+            except IOError, e:
+                print "server closed connection"
+                break
 
 
         # Check if the server_socket should be kept alive, cleanup otherwise
-        if (req != None) and (not is_persistent(req, resp)):
+        if not req.persistent:
             server_socket.close()
             break
 
@@ -354,7 +361,7 @@ def connecion_handler(client_socket, addr):
 
 
 
-    # print "leaving thread"            
+    print "leaving thread"            
     # All work done for thread, close sockets
     client_socket.close()
 
@@ -369,7 +376,7 @@ if (len(sys.argv) != 3):
 
 port = int(sys.argv[1])
 
-threaded = True
+threaded = False
 
 # Set up a listening socket for accepting connection
 listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
