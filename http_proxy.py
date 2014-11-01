@@ -114,6 +114,8 @@ def read_chunked(reading, writing):
 
     # TODO: check for trailing headers is chunk line
 
+    print "first chunk size: ", size
+
     # Loop while there are chunks
     while size > 0:
         # Start by sending the chunk size
@@ -122,15 +124,23 @@ def read_chunked(reading, writing):
         read = 0
         while read < size:
             response = reading.recv(min(buflen, size - read))
+            print response
             read = read + len(response)
             writing.sendall(response)
 
         # Try to read next chunk line, fall back to size zero in case server does not send terminating chunk
         chunk_line = read_line_from_socket(reading)
+
+        if len(chunk_line) == 0:
+            chunk_line = read_line_from_socket(reading)
+
         if len(chunk_line) > 0:
             size = int(chunk_line.split(";", 1)[0], 16)
         else:
             size = 0
+
+        print "chunk line: ", chunk_line
+        print "chunk size: ", size
 
     # Send final 0 size chunk to recipient
     writing.sendall(chunk_line + "\r\n")
@@ -351,7 +361,6 @@ def connecion_handler(client_socket, addr):
                 print "server closed connection"
                 break
 
-
         # Check if the server_socket should be kept alive, cleanup otherwise
         if not req.persistent:
             server_socket.close()
@@ -376,7 +385,7 @@ if (len(sys.argv) != 3):
 
 port = int(sys.argv[1])
 
-threaded = False
+threaded = True
 
 # Set up a listening socket for accepting connection
 listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
