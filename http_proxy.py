@@ -6,6 +6,9 @@ import threading
 import datetime
 import logging
 from urlparse import urlsplit
+import base64
+import email.utils as eut
+import os
 
 buflen = 4096
 
@@ -106,6 +109,7 @@ def read_content_length(reading, writing, length):
         read = read + len(response)
         writing.sendall(response)
 
+
 # Read data sent via chunked transfer-encoding
 # This is primitive and does not support all features yet
 def read_chunked(reading, writing):
@@ -198,6 +202,35 @@ def log(req, response, addr):
     logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
     logging.warning(log)
 
+#Saving data to cache
+def cache_file(url, filename, expire_date, data):  
+    date = str.replace(str(eut.parsedate(expire_date)), ', ','_')
+    print filename
+    os.chdir('cache/' + url)
+    file = open(date + base64.standard_b64encode(filename), "a")
+    file.write(data)
+    file.close()
+    os.chdir('..')
+    os.chdir('..')
+
+#Check if data is on proxy
+def is_in_cache(url, filename):
+    if not os.path.exists('cache'):
+        os.makedirs('cache')
+        os.chdir('cache')
+    if not os.path.exists(url):
+        os.makedirs(url)
+        os.chdir('..')
+        return None
+
+    searchfile = base64.standard_b64encode(filename)[:29]
+    for file in os.listdir('cache\\' + url +'\\'):
+        if file.endswith(searchfile):
+            myfile = open('cache\\' + url +'\\' + file, 'r')
+            content  = myfile.read()
+            myfile.close()
+            return content
+    return None
 
 ###
 # Handle request
