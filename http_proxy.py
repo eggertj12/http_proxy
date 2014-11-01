@@ -192,26 +192,137 @@ def log(req, response, addr):
     logging.warning(log)
 
 
+###
+# Handle request
+def read_request(request_queue, client_socket, server_socket):
+    # Create a message object for the request
+    req = Message()
+
+    parse_request_line(client_socket, req)
+
+    # Only a small subset of requests are supported
+    if not req.verb in ('GET', 'POST', 'HEAD'):
+        resp = create_error_response(req, '405', 'Method Not Allowed')
+        client_socket.sendall(create_response(resp))
+        log(req, resp, addr)
+        # jump to cleanup
+        return None            
+
+    parse_headers(client_socket, req)
+
+    # host header is required
+    if not ('host' in req.headers):
+        resp = create_error_response(req, '400', 'Bad request')
+        client_socket.sendall(create_response(resp))
+        log(req, resp, addr)
+        return None            
+
+    req.port = get_dest_port(req)
+
+    try:
+        server_socket = open_connection(req)
+
+    # Get this gaierror if it is impossible to open a connection
+    # Blame it on the client and send a Bad request response
+    except socket.gaierror, e:
+        resp = create_error_response(req, '400', 'Bad request')
+        client_socket.sendall(create_response(resp))
+        log(req, resp, addr)
+
+        # Jump directly to cleanup
+        return None
+
+    # Add required via header
+    if req.version[:5] == 'HTTP/':
+        ver = req.version[5:]
+    else:
+        ver = req.version
+    if 'via' in req.headers:
+        req.headers['via'] += ', ' + ver + ' p-p-p-proxy'
+    else:
+        req.headers['via'] = ver + ' p-p-p-proxy'
+
+    # Request object is ready push to queue
+    request_queue.append(req)
+
+    request_string = create_request(req)
+    server_socket.sendall(request_string)
+
+    # Send rest of message if available (POST data)
+    if 'content-length' in req.headers:
+        length = int(req.headers['content-length'])
+        read_content_length(client_socket, server_socket, length)
+
+    elif 'transfer-encoding' in req.headers:
+        tf_encoding = req.headers['transfer-encoding']
+        # print "transfer-encoding", tf_encoding
+        if "chunked" in tf_encoding.lower():
+            read_chunked(client_socket, server_socket)
+
+    return server_socket
+
+###
+# Handle response
+def read_response(req, client_socket, server_socket):
+    # Now on to handling the response
+    resp = Message()
+
+    parse_response_line(server_socket, resp)
+    parse_headers(server_socket, resp)
+
+    response = create_response(resp)
+
+    #Logging to file
+    log(req, resp, addr)
+
+    # Send the response
+    client_socket.sendall(response)
+
+    # Get the response data if any
+    if 'content-length' in resp.headers:
+        length = int(resp.headers['content-length'])
+        read_content_length(server_socket, client_socket, length)
+
+    elif 'transfer-encoding' in resp.headers:
+        tf_encoding = resp.headers['transfer-encoding']
+        if "chunked" in tf_encoding.lower():
+            read_chunked(server_socket, client_socket)
+
+    return resp
+
+
 ###################################################
 # Define a handler for threading
 # Will serve each connection and then close socket
 ###################################################
 
-def connecion_handler(connectionsocket, addr):
+def connecion_handler(client_socket, addr):
 
     # print debug info
     print 'connection from: ' + str(addr[0]) + ':' + str(addr[1])
 
+    server_socket = None
+    request_queue = []
+    req = None
+
     # Loop to handle persistent connections
     while True:
 
+
         # select blocks on list of sockets until reading / writing is available
         # or until timeout happens, set timeout of 5 seconds for dropped connections
-        readList, writeList, errorList = select.select([connectionsocket], [], [], 30)
+        if server_socket != None:
+            socketList = [client_socket, server_socket]
+        else:
+            socketList = [client_socket]
+
+        print "socketList:", socketList
+        readList, writeList, errorList = select.select(socketList, [], [], 30)
+
 
         # empty list of sockets means a timeout occured
         if (len(readList) == 0):
-            peer = connectionsocket.getpeername()
+            peer = client_socket.getpeername()
             break
 
         # length of 0 means connection was closed
@@ -220,99 +331,32 @@ def connecion_handler(connectionsocket, addr):
         # if (len(packet) == 0):
         #     break
 
-        # Create a message object for the request
-        req = Message()
+        if (client_socket in readList):
+            server_socket = read_request(request_queue, client_socket, server_socket)
 
-        parse_request_line(connectionsocket, req)
+            # returns None on any error
+            if server_socket == None:
+                break
 
-        # Only a small subset of requests are supported
-        if not req.verb in ('GET', 'POST', 'HEAD'):
-            resp = create_error_response(req, '405', 'Method Not Allowed')
-            connectionsocket.sendall(create_response(resp))
-            log(req, resp, addr)
-            # jump to cleanup
-            break            
+        elif (server_socket in readList):
+            req = request_queue[0]
+            request_queue = request_queue[1:]
 
-        parse_headers(connectionsocket, req)
+            resp = read_response(req, client_socket, server_socket)
 
-        # host header is required
-        if not ('host' in req.headers):
-            resp = create_error_response(req, '400', 'Bad request')
-            connectionsocket.sendall(create_response(resp))
-            log(req, resp, addr)
-            break            
 
-        req.port = get_dest_port(req)
-
-        try:
-            connection = open_connection(req)
-
-        # Get this gaierror if it is impossible to open a connection
-        # Blame it on the client and send a Bad request response
-        except socket.gaierror, e:
-            resp = create_error_response(req, '400', 'Bad request')
-            connectionsocket.sendall(create_response(resp))
-            log(req, resp, addr)
-
-            # Jump directly to cleanup
+        # Check if the server_socket should be kept alive, cleanup otherwise
+        if (req != None) and (not is_persistent(req, resp)):
+            server_socket.close()
             break
 
-        # Add required via header
-        if req.version[:5] == 'HTTP/':
-            ver = req.version[5:]
-        else:
-            ver = req.version
-        if 'via' in req.headers:
-            req.headers['via'] += ', ' + ver + ' p-p-p-proxy'
-        else:
-            req.headers['via'] = ver + ' p-p-p-proxy'
+#        break
 
-        request_string = create_request(req)
-        connection.sendall(request_string)
 
-        # Send rest of message if available (POST data)
-        if 'content-length' in req.headers:
-            length = int(req.headers['content-length'])
-            read_content_length(connectionsocket, connection, length)
-
-        elif 'transfer-encoding' in req.headers:
-            tf_encoding = req.headers['transfer-encoding']
-            # print "transfer-encoding", tf_encoding
-            if "chunked" in tf_encoding.lower():
-                read_chunked(connectionsocket, connection)
-
-        # Now on to handling the response
-        resp = Message()
-
-        parse_response_line(connection, resp)
-        parse_headers(connection, resp)
-
-        response = create_response(resp)
-
-        #Logging to file
-        log(req, resp, addr)
-
-        # Send the response
-        connectionsocket.sendall(response)
-
-        # Get the response data if any
-        if 'content-length' in resp.headers:
-            length = int(resp.headers['content-length'])
-            read_content_length(connection, connectionsocket, length)
-
-        elif 'transfer-encoding' in resp.headers:
-            tf_encoding = resp.headers['transfer-encoding']
-            if "chunked" in tf_encoding.lower():
-                read_chunked(connection, connectionsocket)
-
-        # Check if the connection should be kept alive, cleanup otherwise
-        if not is_persistent(req, resp):
-            connection.close()
-            break
 
     # print "leaving thread"            
     # All work done for thread, close sockets
-    connectionsocket.close()
+    client_socket.close()
 
 #################################################
 # Program start
