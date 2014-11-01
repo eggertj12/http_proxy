@@ -43,7 +43,7 @@ def read_line_from_socket(s):
 # Get the first line of a request and split into parts
 def parse_request_line(s, req):
     sp = read_line_from_socket(s)
-    print "request_line: ", sp
+    #print "request_line: ", sp
     req.verb, req.path, req.version = sp.split(" ")
     o = urlsplit(req.path)
     req.path = o.path
@@ -56,7 +56,7 @@ def parse_request_line(s, req):
 # Get the first line of a response and split into parts
 def parse_response_line(s, resp):
     sp = read_line_from_socket(s)
-    print "response_line: ", sp
+    #print "response_line: ", sp
     resp.version, resp.status, resp.text = sp.split(" ", 2)
     return
 
@@ -109,6 +109,14 @@ def read_content_length(reading, writing, length):
         read = read + len(response)
         writing.sendall(response)
 
+def send_cached_file(myfile, writing):
+    read = 0
+    filestat = os.stat(myfile)
+    filelength = filestat.st_size
+    while read < filelength:
+        response = myfile.read(buflen)
+        read = read + len(response)
+        writing.sendall(response)
 
 # Read data sent via chunked transfer-encoding
 # This is primitive and does not support all features yet
@@ -118,7 +126,7 @@ def read_chunked(reading, writing):
 
     # TODO: check for trailing headers is chunk line
 
-    print "first chunk size: ", size
+    # print "first chunk size: ", size
 
     # Loop while there are chunks
     while size > 0:
@@ -128,7 +136,7 @@ def read_chunked(reading, writing):
         read = 0
         while read < size:
             response = reading.recv(min(buflen, size - read))
-            print response
+            # print response
             read = read + len(response)
             writing.sendall(response)
 
@@ -143,8 +151,8 @@ def read_chunked(reading, writing):
         else:
             size = 0
 
-        print "chunk line: ", chunk_line
-        print "chunk size: ", size
+        #print "chunk line: ", chunk_line
+        #print "chunk size: ", size
 
     # Send final 0 size chunk to recipient
     writing.sendall(chunk_line + "\r\n")
@@ -203,34 +211,56 @@ def log(req, response, addr):
     logging.warning(log)
 
 #Saving data to cache
-def cache_file(url, filename, expire_date, data):  
-    date = str.replace(str(eut.parsedate(expire_date)), ', ','_')
-    print filename
-    os.chdir('cache/' + url)
-    file = open(date + base64.standard_b64encode(filename), "a")
-    file.write(data)
-    file.close()
-    os.chdir('..')
-    os.chdir('..')
+def cache_file(url, filename, expire_date, data):
+    lock = threading.Lock()
+    with lock:
+        print "ENTERING CACHE_FILE FOLDER\n"
+        date = str.replace(str(eut.parsedate(expire_date)), ', ','_')
+        #print filename
+        os.chdir('cache/' + url)
+        print str(os.getcwd()) +  "\n"
+        file = open(date + base64.standard_b64encode(filename), "a")
+        file.write(data)
+        file.close()
+        print str(os.getcwd() + "\n")
+        os.chdir('..')
+        print str(os.getcwd() + "\n")
+        os.chdir('..')
 
 #Check if data is on proxy
 def is_in_cache(url, filename):
-    if not os.path.exists('cache'):
-        os.makedirs('cache')
-        os.chdir('cache')
-    if not os.path.exists(url):
-        os.makedirs(url)
-        os.chdir('..')
-        return None
+#    if not os.path.exists('cache'):
+#        os.makedirs('cache')
+    lock = threading.Lock()
 
-    searchfile = base64.standard_b64encode(filename)[:29]
-    for file in os.listdir('cache\\' + url +'\\'):
-        if file.endswith(searchfile):
-            myfile = open('cache\\' + url +'\\' + file, 'r')
-            content  = myfile.read()
-            myfile.close()
-            return content
-    return None
+    with lock:
+        if not os.path.exists('cache'):
+            os.makedirs(r'cache')
+        if not os.path.exists('cache/' + url):
+            os.makedirs(r'cache/' + str(url))
+            return None
+        mypath = "cache/" + str(url)
+
+        #print "NOW " +str(os.getcwd() + "\n")
+        #os.chdir('cache')
+        #if not os.path.exists(url):
+        #    os.makedirs(url)
+        #    os.chdir('..')
+        #    return None
+        #os.chdir('..')
+        print "ISINCACHE 1 " + str(os.getcwd() + "\n")
+
+        searchfile = base64.standard_b64encode(filename)[:29]
+        #os.chdir(mypath)
+        for file in os.listdir(mypath):
+            if file.endswith(searchfile):
+                myfile = open(mypath + str(file), 'r')
+                content  = myfile.read()
+                myfile.close()
+                return content
+        print "ISINCACHE 2 " + str(os.getcwd() + "\n")
+
+        return None
 
 ###
 # Handle request
@@ -257,51 +287,59 @@ def read_request(request_queue, client_socket, server_socket):
         log(req, resp, addr)
         return None            
 
-    req.port = get_dest_port(req)
+    ## CHECK IF FILE IS IN CACHE
+    if (is_in_cache(req.headers['host'], req.path) == None):
+        req.port = get_dest_port(req)
 
-    try:
-        server_socket = open_connection(req)
+        try:
+            server_socket = open_connection(req)
 
-    # Get this gaierror if it is impossible to open a connection
-    # Blame it on the client and send a Bad request response
-    except socket.gaierror, e:
-        resp = create_error_response(req, '400', 'Bad request')
-        client_socket.sendall(create_response(resp))
-        log(req, resp, addr)
+        # Get this gaierror if it is impossible to open a connection
+        # Blame it on the client and send a Bad request response
+        except socket.gaierror, e:
+            resp = create_error_response(req, '400', 'Bad request')
+            client_socket.sendall(create_response(resp))
+            log(req, resp, addr)
 
-        # Jump directly to cleanup
+            # Jump directly to cleanup
+            return None
+
+        # Add required via header
+        if req.version[:5] == 'HTTP/':
+            ver = req.version[5:]
+        else:
+            ver = req.version
+        if 'via' in req.headers:
+            req.headers['via'] += ', ' + ver + ' p-p-p-proxy'
+        else:
+            req.headers['via'] = ver + ' p-p-p-proxy'
+
+        req.persistent = is_persistent(req)
+
+        # Request object is ready push to queue
+        request_queue.append(req)
+
+        request_string = create_request(req)
+        server_socket.sendall(request_string)
+
+        # Send rest of message if available (POST data)
+        if 'content-length' in req.headers:
+            length = int(req.headers['content-length'])
+            read_content_length(client_socket, server_socket, length)
+
+        elif 'transfer-encoding' in req.headers:
+            tf_encoding = req.headers['transfer-encoding']
+            # print "transfer-encoding", tf_encoding
+            if "chunked" in tf_encoding.lower():
+                read_chunked(client_socket, server_socket)
+
+        return server_socket
+
+    else:
+        ### RETURN FILE
+        print "FILE IS IN CACHE!"
+        send_cached_file(is_in_cache(req.headers['host'], req.path),client_socket)
         return None
-
-    # Add required via header
-    if req.version[:5] == 'HTTP/':
-        ver = req.version[5:]
-    else:
-        ver = req.version
-    if 'via' in req.headers:
-        req.headers['via'] += ', ' + ver + ' p-p-p-proxy'
-    else:
-        req.headers['via'] = ver + ' p-p-p-proxy'
-
-    req.persistent = is_persistent(req)
-
-    # Request object is ready push to queue
-    request_queue.append(req)
-
-    request_string = create_request(req)
-    server_socket.sendall(request_string)
-
-    # Send rest of message if available (POST data)
-    if 'content-length' in req.headers:
-        length = int(req.headers['content-length'])
-        read_content_length(client_socket, server_socket, length)
-
-    elif 'transfer-encoding' in req.headers:
-        tf_encoding = req.headers['transfer-encoding']
-        # print "transfer-encoding", tf_encoding
-        if "chunked" in tf_encoding.lower():
-            read_chunked(client_socket, server_socket)
-
-    return server_socket
 
 ###
 # Handle response
@@ -314,7 +352,12 @@ def read_response(req, client_socket, server_socket):
 
     response = create_response(resp)
 
+    ################CACHING ###################
+    #def cache_file(req.headers['host'], request.path, req.headers['expired-date'], data)
+    
+
     #Logging to file
+
     log(req, resp, addr)
 
     # Send the response
@@ -343,7 +386,7 @@ def read_response(req, client_socket, server_socket):
 def connecion_handler(client_socket, addr):
 
     # print debug info
-    print 'entering thread, connection from: ' + str(addr[0]) + ':' + str(addr[1])
+    # print 'entering thread, connection from: ' + str(addr[0]) + ':' + str(addr[1])
 
     server_socket = None
     request_queue = []
@@ -369,12 +412,12 @@ def connecion_handler(client_socket, addr):
             break
 
         if (client_socket in readList):
-            print "reading client_socket", readList
+            # print "reading client_socket", readList
 
             try:
                 server_socket = read_request(request_queue, client_socket, server_socket)
             except IOError, e:
-                print "client closed connection"
+                # print "client closed connection"
                 break
 
 
@@ -386,12 +429,12 @@ def connecion_handler(client_socket, addr):
             request_queue = request_queue[1:]
 
         elif (server_socket in readList):
-            print "reading server_socket", readList
+            # print "reading server_socket", readList
 
             try:
                 resp = read_response(req, client_socket, server_socket)
             except IOError, e:
-                print "server closed connection"
+                # print "server closed connection"
                 break
 
         # Check if the server_socket should be kept alive, cleanup otherwise
@@ -403,7 +446,7 @@ def connecion_handler(client_socket, addr):
 
 
 
-    print "leaving thread"            
+    # print "leaving thread"            
     # All work done for thread, close sockets
     client_socket.close()
 
@@ -413,7 +456,7 @@ def connecion_handler(client_socket, addr):
 
 #Send in two variables, portnr and log.txt
 if (len(sys.argv) != 3):
-    print 'Need two arguments, port number and file for logging'
+    # print 'Need two arguments, port number and file for logging'
     sys.exit(1)
 
 port = int(sys.argv[1])
