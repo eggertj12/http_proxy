@@ -6,7 +6,7 @@ import threading
 import datetime
 import logging
 from urlparse import urlsplit
-import base64
+import urllib
 import email.utils as eut
 import os
 
@@ -101,10 +101,13 @@ def open_connection(req):
     return conn
 
 # Read data sent via buffered mode
-def read_content_length(reading, writing, length):
+def read_content_length(reading, writing, length, host, path, resp_header):
     read = 0
     while read < length:
         response = reading.recv(buflen)
+        # Caching file
+        if 'expires' in resp_header:
+            cache_file(host, path, resp_header['expires'],response)
         read = read + len(response)
         writing.sendall(response)
 
@@ -203,45 +206,30 @@ def log(req, response, addr):
 #Saving data to cache
 def cache_file(url, filename, expire_date, data):
     lock = threading.Lock()
+    my_dir = 'cache/' + str(url)
     with lock:
-        print "ENTERING CACHE_FILE FOLDER\n"
         date = str.replace(str(eut.parsedate(expire_date)), ', ','_')
-        #print filename
-        os.chdir('cache/' + url)
-        print str(os.getcwd()) +  "\n"
-        file = open(date + base64.standard_b64encode(filename), "a")
+        if not os.path.exists(my_dir):
+            os.makedirs(my_dir)
+        filename = filename.split("?")[0]
+        print "CACHING " + filename + "\n   FROM " + str(url)
+        file = open(my_dir + '/' + date + urllib.quote_plus(filename), "ab+")
         file.write(data)
         file.close()
-        print str(os.getcwd() + "\n")
-        os.chdir('..')
-        print str(os.getcwd() + "\n")
-        os.chdir('..')
 
 #Check if data is on proxy
 def is_in_cache(url, filename):
-#    if not os.path.exists('cache'):
-#        os.makedirs('cache')
     lock = threading.Lock()
-
+    myPath = 'cache/' + str(url)
     with lock:
         if not os.path.exists('cache'):
-            os.makedirs(r'cache')
+            os.makedirs('cache')
         if not os.path.exists('cache/' + url):
-            os.makedirs(r'cache/' + str(url))
             return None
-        mypath = "cache/" + str(url)
-
-        #print "NOW " +str(os.getcwd() + "\n")
-        #os.chdir('cache')
-        #if not os.path.exists(url):
-        #    os.makedirs(url)
-        #    os.chdir('..')
-        #    return None
-        #os.chdir('..')
         print "ISINCACHE 1 " + str(os.getcwd() + "\n")
 
-        searchfile = base64.standard_b64encode(filename)[:29]
-        #os.chdir(mypath)
+        searchfile = urllib.unquote(filename)[:29]
+
         for file in os.listdir(mypath):
             if file.endswith(searchfile):
                 myfile = open(mypath + str(file), 'r')
@@ -308,7 +296,7 @@ def read_request(request_queue, client_socket, server_socket):
     # Send rest of message if available (POST data)
     if 'content-length' in req.headers:
         length = int(req.headers['content-length'])
-        read_content_length(client_socket, server_socket, length)
+        read_content_length(client_socket, server_socket, length,"","","")
 
     elif 'transfer-encoding' in req.headers:
         tf_encoding = req.headers['transfer-encoding']
@@ -323,12 +311,7 @@ def read_response(req, resp, client_socket, server_socket):
 
     response = create_response(resp)
 
-    ################CACHING ###################
-    #def cache_file(req.headers['host'], request.path, req.headers['expired-date'], data)
-    
-
     #Logging to file
-
     log(req, resp, addr)
 
     client_socket.sendall(response)
@@ -338,7 +321,7 @@ def read_response(req, resp, client_socket, server_socket):
     # Get the response data if any
     if 'content-length' in resp.headers:
         length = int(resp.headers['content-length'])
-        read_content_length(server_socket, client_socket, length)
+        read_content_length(server_socket, client_socket, length, req.headers['host'], req.path, resp.headers)
 
     elif 'transfer-encoding' in resp.headers:
         tf_encoding = resp.headers['transfer-encoding']
@@ -385,10 +368,10 @@ def connecion_handler(client_socket, addr):
             try:
                 server_socket = read_request(request_queue, client_socket, server_socket)
             except BufferError, e:
-                print "client closed connection"
+                #print "client closed connection"
                 break
             except IOError, e:
-                print e.message
+                #print e.message
                 break
 
             # returns None on cached response, then just loop to listening again
@@ -403,7 +386,7 @@ def connecion_handler(client_socket, addr):
                 parse_response_line(server_socket, resp)
                 parse_headers(server_socket, resp)
             except BufferError, e:
-                print "server closed connection"
+                #print "server closed connection"
                 break
 
             # read the oldest request off of the queue
@@ -419,7 +402,7 @@ def connecion_handler(client_socket, addr):
 
     # print "leaving thread"            
 
-    print "leaving thread"            
+    #print "leaving thread"            
 
     # All work done for thread, close sockets
     client_socket.close()
