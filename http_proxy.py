@@ -226,17 +226,18 @@ def is_in_cache(url, filename):
             os.makedirs('cache')
         if not os.path.exists('cache/' + url):
             return None
-        print "ISINCACHE 1 " + str(os.getcwd() + "\n")
 
-        searchfile = urllib.unquote(filename)[:29]
+        searchfile = urllib.quote_plus(filename)[:29]
 
-        for file in os.listdir(mypath):
+        for file in os.listdir(myPath):
             if file.endswith(searchfile):
-                myfile = open(mypath + str(file), 'r')
-                content  = myfile.read()
-                myfile.close()
-                return content
-        print "ISINCACHE 2 " + str(os.getcwd() + "\n")
+                currenttime = datetime.datetime.now()
+                filetime = datetime.datetime.strptime(str(file)[1:20], "%Y_%m_%d_%H_%M_%S")
+                if currenttime < filetime:
+                    myfile = open(myPath + str(file), 'r')
+                    content  = myfile.read()
+                    myfile.close()
+                    return content
 
         return None
 
