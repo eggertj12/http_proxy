@@ -219,8 +219,11 @@ def cache_file(url, filename, expire_date, data, content_type):
     lock = threading.Lock()
     my_dir = 'cache/' + str(url)
     with lock:
-        c = str(datetime.datetime.strptime(str(eut.parsedate(expire_date)), "(%Y, %m, %d, %H, %M, %S, 0, 1, -1)"))
-        date = str.replace(str.replace(str.replace(c, ':', ''), ' ', ''), '-', '')
+        ExpireDate = str(eut.parsedate(expire_date))
+        if ExpireDate == 'None':
+            return
+        strippedDate = str(datetime.datetime.strptime(ExpireDate, "(%Y, %m, %d, %H, %M, %S, 0, 1, -1)"))
+        date = str.replace(str.replace(str.replace(strippedDate, ':', ''), ' ', ''), '-', '')
         if not os.path.exists(my_dir):
             os.makedirs(my_dir)
         filename = filename.split("?")[0] + '|' + content_type
