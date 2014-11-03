@@ -24,6 +24,20 @@ class Message:
         self.persistent = False
         self.headers = {}
 
+    # Helpers for debugging
+    def print_request(self):
+        print self.verb, self.path, self.version
+        for header in self.headers:
+            print header + ": " + self.headers[header]
+        print ''
+
+    def print_response(self):
+        print self.version, self.status, self.text
+        for header in self.headers:
+            print header + ": " + self.headers[header]
+        print ''
+
+
 # Read one text line from socket
 def read_line_from_socket(s):
     line = ""
@@ -318,6 +332,8 @@ def read_request(request_queue, client_socket, server_socket):
 
     req.persistent = is_persistent(req)
 
+    req.print_request()
+
     # Request object is ready push to queue
     request_queue.append(req)
 
@@ -339,6 +355,8 @@ def read_request(request_queue, client_socket, server_socket):
 
 # Handle response
 def read_response(req, resp, client_socket, server_socket):
+
+    resp.print_response()
 
     response = create_response(resp)
 
@@ -449,7 +467,7 @@ if (len(sys.argv) != 3):
 
 port = int(sys.argv[1])
 
-threaded = True
+threaded = False
 
 # Set up a listening socket for accepting connection
 listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
