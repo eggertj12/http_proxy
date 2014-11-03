@@ -107,18 +107,29 @@ def read_content_length(reading, writing, length, host, path, resp_header):
         response = reading.recv(buflen)
         # Caching file
         if 'expires' in resp_header:
-            cache_file(host, path, resp_header['expires'],response)
+            cache_file(host, path, resp_header['expires'], response, resp_header['content-type'])
         read = read + len(response)
         writing.sendall(response)
 
 def send_cached_file(myfile, writing):
     read = 0
-    filestat = os.stat(myfile)
-    filelength = filestat.st_size
+    #filestat = os.stat(myfile)
+    #filelength = filestat.st_size
+    currfile = open(myfile,'r')
+
+    filelength = os.path.getsize(myfile)
+    content_type = urllib.unquote_plus(myfile).split('|')[-1]
+
+    my_header = 'HTTP/1.1 200 OK\r\n'
+    my_header += 'content-type: ' + content_type + '\r\n'
+    my_header += 'content-length: ' + str(filelength) + '\r\n\r\n'
+    writing.sendall(my_header)
+
     while read < filelength:
-        response = myfile.read(buflen)
+        response = currfile.read(buflen)
         read = read + len(response)
         writing.sendall(response)
+    currfile.close()
 
 # Read data sent via chunked transfer-encoding
 def read_chunked(reading, writing):
@@ -204,14 +215,15 @@ def log(req, response, addr):
     logging.warning(log)
 
 #Saving data to cache
-def cache_file(url, filename, expire_date, data):
+def cache_file(url, filename, expire_date, data, content_type):
     lock = threading.Lock()
     my_dir = 'cache/' + str(url)
     with lock:
         date = str.replace(str(eut.parsedate(expire_date)), ', ','_')
         if not os.path.exists(my_dir):
             os.makedirs(my_dir)
-        filename = filename.split("?")[0]
+        filename = filename.split("?")[0] + '|' + content_type
+
         print "CACHING " + filename + "\n   FROM " + str(url)
         file = open(my_dir + '/' + date + urllib.quote_plus(filename), "ab+")
         file.write(data)
@@ -220,7 +232,7 @@ def cache_file(url, filename, expire_date, data):
 #Check if data is on proxy
 def is_in_cache(url, filename):
     lock = threading.Lock()
-    myPath = 'cache/' + str(url)
+    mypath = 'cache/' + str(url) + '/'
     with lock:
         if not os.path.exists('cache'):
             os.makedirs('cache')
@@ -228,15 +240,19 @@ def is_in_cache(url, filename):
             return None
         print "ISINCACHE 1 " + str(os.getcwd() + "\n")
 
-        searchfile = urllib.unquote(filename)[:29]
+        searchfile = urllib.quote_plus(filename)
 
         for file in os.listdir(mypath):
-            if file.endswith(searchfile):
-                myfile = open(mypath + str(file), 'r')
-                content  = myfile.read()
-                myfile.close()
-                return content
-        print "ISINCACHE 2 " + str(os.getcwd() + "\n")
+            s_file = file.split('%7C')[0]
+            if s_file.endswith(searchfile):
+                myfile = mypath + file
+                #myfile = open(mypath + str(file), 'r')
+                #content  = myfile.read()
+                #myfile.close()
+                #return content
+                print "RETURNING " + myfile + "\n"
+                return myfile
+        #print "ISINCACHE 2 " + myfile + "\n"
 
         return None
 
@@ -262,6 +278,10 @@ def read_request(request_queue, client_socket, server_socket):
         client_socket.sendall(create_response(resp))
         log(req, resp, addr)
         raise IOError('Missing host header')
+
+    cache_file = is_in_cache(req.headers['host'], req.path)
+    if not (cache_file == None):
+        send_cached_file(cache_file, client_socket)
 
     req.port = get_dest_port(req)
 
