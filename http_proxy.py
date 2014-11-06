@@ -252,6 +252,9 @@ def is_in_cache(url, filename):
                 if currenttime < filetime:
                     myfile = mypath + file
                     return myfile
+                else:
+                    #If the file is expired it is thrown away
+                    os.remove(myfile)
 
         #searchfile = urllib.quote_plus(filename)[:29]
 
