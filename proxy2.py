@@ -63,7 +63,7 @@ def connection_handler(client_socket):
                 print 'Client closed socket'
                 break
 
-#        req.print_request()
+        req.print_request(True)
 
         # Only a small subset of requests are supported
         if not req.verb in ('GET', 'POST', 'HEAD'):

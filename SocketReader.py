@@ -30,10 +30,13 @@ class SocketReader:
             recv_buffer = self.buflen
 
         # check if we have a line available in buffer and return it if so
-        if len(self.buffer) > 0 and self.buffer.find(delim) != -1:
-            line, self.buffer = self.buffer.split(delim, 1)
-            return line.strip(" \r\n\t")
+        pos = self.buffer.find(delim)
+        if len(self.buffer) > 0 and pos != -1:
+            line = self.buffer[:pos + len(delim)]
+            self.buffer = self.buffer[pos + len(delim):]
+            return line 
 
+        # Else read it from socket
         data = True
         while data:
             data = self.socket.recv(recv_buffer)
@@ -42,9 +45,11 @@ class SocketReader:
 
             self.buffer += data
 
-            if self.buffer.find(delim) != -1:
-                line, self.buffer = self.buffer.split('\n', 1)
-                return line.strip(" \r\n\t")
+            pos = self.buffer.find(delim)
+            if pos != -1:
+                line = self.buffer[:pos + len(delim)]
+                self.buffer = self.buffer[pos + len(delim):]
+                return line 
         return
 
     def recv(self, recv_buffer=None):
@@ -60,26 +65,12 @@ class SocketReader:
 #            print "returning " + str(len(data)) + " bytes. Current buffer size " + str(len(self.buffer))
             return data
 
-        data = self.socket.recv(recv_buffer)
-#        print "read " + str(len(data)) + "bytes"
-        if len(data) == 0:
-            # TODO: handle closed socket
-            data = self.buffer
-            self.buffer = '';
-#            print "Nothing recv-ed"
-#            print "returning " + str(len(data)) + " bytes. Current buffer size " + str(len(self.buffer))
-            return data
-
-        self.buffer += data
-
-        if len(self.buffer) > recv_buffer:
-#            print "read more than enough, bytes read: " + str(len(data))
-            data = self.buffer[:recv_buffer]
-            self.buffer = self.buffer[recv_buffer:]
-        else:
+        if len(self.buffer) > 0:
             data = self.buffer
             self.buffer = ''
-#            print "Read <= requested"
+            return data
 
-#        print "returning " + str(len(data)) + " bytes. Current buffer size " + str(len(self.buffer))
+        data = self.socket.recv(recv_buffer)
+        if len(data) == 0:
+            raise IOError('Socket closed')
         return data

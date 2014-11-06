@@ -1,4 +1,6 @@
 from urlparse import urlsplit
+from socket import *
+import socket
 
 from Message import Message
 
@@ -10,7 +12,7 @@ class HttpHelper:
     @staticmethod
     def parse_request_line(s):
         req = Message()
-        sp = s.readline()
+        sp = s.readline().strip('\r\n')
 
         req.verb, req.path, req.version = sp.split(" ")
         o = urlsplit(req.path)
@@ -25,7 +27,7 @@ class HttpHelper:
     @staticmethod
     def parse_response_line(s):
         resp = Message()
-        sp = s.readline()
+        sp = s.readline().strip('\r\n')
 
         resp.version, resp.status, resp.text = sp.split(" ", 2)
         return resp
@@ -33,7 +35,8 @@ class HttpHelper:
     # Read the headers line by line and store in dictionary
     @staticmethod
     def parse_headers(s, message):
-        line = s.readline()
+        line = s.readline().strip('\r\n')
+        print "line: ", line
         while len(line) > 0:
             split = line.split(':', 1)
             if len(split) != 2:
@@ -42,7 +45,7 @@ class HttpHelper:
             key = split[0].lower()
             value = split[1]
             message.headers[key] = value.strip(" \n\r\t")
-            line = s.readline()
+            line = s.readline().strip('\r\n')
             
         return message
 
@@ -102,8 +105,8 @@ class HttpHelper:
         while size > 0:
             print "Serving chunk of size: ", size
             # Start by sending the chunk size
-            print "Chunk_line: ", chunk_line + "\r\n", " Size: ", len(chunk_line + "\r\n")
-            writing.sendall(chunk_line + "\r\n")
+            print "Chunk_line: ", chunk_line, " Size: ", len(chunk_line)
+            writing.sendall(chunk_line)
 
             read = 0
             while read < size + 2:
@@ -125,15 +128,15 @@ class HttpHelper:
                 chunk_line = ''
 
         # Send final 0 size chunk to recipient
-        writing.sendall(chunk_line + "\r\n")
+        writing.sendall(chunk_line)
 
         # Read trailer-part and forward it blindly
         line = reading.readline()
-        while len(line) > 0:
+        while len(line) > 2:
             # Most likely the connection has been closed by now
             # but there could be more to come
             try:
-                writing.sendall(line + "\r\n")
+                writing.sendall(line)
             except socket.error, e:
                 pass
 
