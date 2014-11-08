@@ -43,7 +43,7 @@ def connect_to_server(message):
 # Handle sending the message (request or response) and accompanying data if available
 def forward_message(message, reading, writing):
     # Let the world know who we are
-    message.add_via('RatherPoorProxy')
+#    message.add_via('RatherPoorProxy')
 
     # Write the message to target socket
     writing.sendall(message.to_string())
@@ -122,7 +122,8 @@ def connection_handler(client_socket, addr):
 
                 request_queue[req_id] = req
 
-                req.print_message(False)
+                print req.verb, req.hostname, req.port, req.path, req.version
+                req.print_message(True)
 
                 # Only a small subset of requests are supported
                 if not req.verb in ('GET', 'POST', 'HEAD'):
@@ -152,7 +153,8 @@ def connection_handler(client_socket, addr):
                     server_reader = None
                     continue
 
-                resp.print_message(False)
+                resp.print_message(True)
+#                print resp.status, resp.text, resp.version
                 response_queue[resp_id] = resp
 
                 forward_message(resp, server_reader, client_reader)
@@ -193,7 +195,7 @@ def connection_handler(client_socket, addr):
 
     request_queue = None
     response_queue = None
-    print "done with request\r\n"
+    print "done with connection\r\n"
 
 
 #-----------------------------------------------------------------------------------------------------------
