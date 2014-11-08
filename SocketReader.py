@@ -9,8 +9,9 @@ class SocketReader:
     TIMEOUT=30
 
     """ Class to hold request info """
-    def __init__(self, sock, read_bytes = READ_SIZE):
+    def __init__(self, sock, hostname='', read_bytes = READ_SIZE):
         self.socket = sock
+        self.hostname = hostname
         self.buffer = ''
         self.read_size = read_bytes
 

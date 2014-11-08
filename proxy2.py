@@ -90,13 +90,14 @@ def connection_handler(client_socket, addr):
             if server_reader != None:
                 socket_list.append(server_reader.get_socket())
             elif req_id > resp_id:
+                req = request_queue[resp_id]
                 # Still have responses pending, open a connection to the server
-                server_socket = connect_to_server(request_queue[resp_id])
+                server_socket = connect_to_server(req)
                 if server_socket == None:
                     # TODO: handle not opened connection (Should hardly happen here)
                     print "Could not open connection to server"
                     break
-                server_reader = SocketReader(server_socket)
+                server_reader = SocketReader(server_socket, req.hostname)
                 socket_list.append(server_reader.get_socket())
 
             # select blocks on list of sockets until reading / writing is available
@@ -111,6 +112,7 @@ def connection_handler(client_socket, addr):
                 print "Socket timeout"
                 break
 
+            # Client is ready to send data
             if client_reader != None and client_reader.get_socket() in readList:
                 req = Message()
                 try:
@@ -123,7 +125,7 @@ def connection_handler(client_socket, addr):
                 request_queue[req_id] = req
 
                 print req.verb, req.hostname, req.port, req.path, req.version
-                req.print_message(True)
+                # req.print_message(False)
 
                 # Only a small subset of requests are supported
                 if not req.verb in ('GET', 'POST', 'HEAD'):
@@ -139,11 +141,21 @@ def connection_handler(client_socket, addr):
                         response_queue[req_id] = resp
                         req_id = req_id + 1
                         continue
-                    server_reader = SocketReader(server_socket)
+                    server_reader = SocketReader(server_socket, req.hostname)
+
+                elif server_reader.hostname != req.hostname:
+                    server_socket = connect_to_server(req)
+                    if server_socket == None:
+                        resp = HttpHelper.create_response('400', 'Bad request')
+                        response_queue[req_id] = resp
+                        req_id = req_id + 1
+                        continue
+                    server_reader = SocketReader(server_socket, req.hostname)
 
                 forward_message(req, client_reader, server_reader)
                 req_id = req_id + 1
             
+            # Server is ready to send data
             elif server_reader != None and server_reader.get_socket() in readList:
                 resp = Message()
                 try:
@@ -153,13 +165,15 @@ def connection_handler(client_socket, addr):
                     server_reader = None
                     continue
 
-                resp.print_message(True)
+                resp.print_message(False)
 #                print resp.status, resp.text, resp.version
+                req = request_queue.pop(resp_id)
+                resp.hostname = req.hostname
+
                 response_queue[resp_id] = resp
 
                 forward_message(resp, server_reader, client_reader)
 
-                req = request_queue.pop(resp_id)
 
                 log(req, resp, addr)
 
