@@ -35,9 +35,8 @@ class HttpHelper:
 
         # Loop while there are chunks
         while size > 0:
-            print "Serving chunk of size: ", size
+            # print "Serving chunk of size: ", size
             # Start by sending the chunk size
-            print "Chunk_line: ", chunk_line, " Size: ", len(chunk_line)
             writing.sendall(chunk_line)
 
             read = 0
@@ -57,7 +56,7 @@ class HttpHelper:
 
         # Send final 0 size chunk to recipient
         writing.sendall(chunk_line)
-        print "Serving final chunk of size: ", size
+        # print "Serving final chunk of size: ", size
 
         # Read trailer-part and forward it blindly
         line = reading.readline()
@@ -76,7 +75,6 @@ class HttpHelper:
         # Send final empty line
         writing.sendall(line)
 
-        print "Done with reading chunked message"
         return
 
 

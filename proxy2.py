@@ -18,11 +18,24 @@ from Exceptions import *
 
 #-----------------------------------------------------------------------------------------------------------
 
+# Write the request / response line to given log file
+def log(request, response, addr):
+    if not ('host' in request.headers):
+        request.headers['host'] = ''
+
+    log =  ': ' + str(addr[0]) + ':' + str(addr[1]) + ' ' 
+    log = log + request.verb + ' ' + request.scheme + request.hostname + request.path + ' : '
+    log = log + response.status + ' ' + response.text
+    logging.warning(log)
+
+
+# Setup a connection to the upstream server
 def connect_to_server(message):
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     conn.connect((message.hostname, int(message.port)))
     return conn
 
+# Handle sending the message (request or response) and accompanying data if available
 def forward_message(message, reading, writing):
     # Let the world know who we are
     message.add_via('RatherPoorProxy')
@@ -37,12 +50,11 @@ def forward_message(message, reading, writing):
     elif content == 'chunked':
         HttpHelper.read_chunked(reading, writing)
 
-    print "Done with forward_message"
-
 
 #-----------------------------------------------------------------------------------------------------------
 
-def connection_handler(client_socket):
+# Handle one persistent connection
+def connection_handler(client_socket, addr):
     client_reader = SocketReader(client_socket)
     persistent = True
 
@@ -50,30 +62,29 @@ def connection_handler(client_socket):
 
     while persistent:
         try:
-            # # select blocks on list of sockets until reading / writing is available
-            # # or until timeout happens, set timeout of 30 seconds for dropped connections
-            # socket_list = [client_reader.get_socket()]
-            # readList, writeList, errorList = select.select(socket_list, [], socket_list, SocketReader.TIMEOUT)
+            # select blocks on list of sockets until reading / writing is available
+            # or until timeout happens, set timeout of 30 seconds for dropped connections
+            socket_list = [client_reader.get_socket()]
+            readList, writeList, errorList = select.select(socket_list, [], socket_list, SocketReader.TIMEOUT)
 
-            # if errorList:
-            #     print "Socket error"
-            #     break
+            if errorList:
+                print "Socket error"
+                break
 
-            # if len(readList) == 0:
-            #     print "Socket timeout"
-            #     break
+            if len(readList) == 0:
+                print "Socket timeout"
+                break
 
             req = Message()
-            print "Entering parse_request"
             req.parse_request(client_reader)
 
-            req.print_message(True)
+            req.print_message(False)
 
             # Only a small subset of requests are supported
             if not req.verb in ('GET', 'POST', 'HEAD'):
                 resp = HttpHelper.create_response('405', 'Method Not Allowed')
                 client_reader.sendall(resp.to_string)
-                # log(req, resp, addr)
+                log(req, resp, addr)
                 # jump to cleanup
                 break            
 
@@ -84,7 +95,7 @@ def connection_handler(client_socket):
             except socket.gaierror, e:
                 resp = HttpHelper.create_response('400', 'Bad request')
                 client_reader.sendall(resp.to_string())
-                # log(req, resp, addr)
+                log(req, resp, addr)
                 # Jump directly to cleanup
                 break
 
@@ -95,9 +106,11 @@ def connection_handler(client_socket):
             resp = Message()
             resp.parse_response(server_reader)
 
-            resp.print_message(True)
+            resp.print_message(False)
 
             forward_message(resp, server_reader, client_reader)
+
+            log(req, resp, addr)
 
 #            if not resp.is_persistent(req):
             # Clean up server connection
@@ -137,6 +150,8 @@ if (len(sys.argv) != 3):
 
 port = int(sys.argv[1])
 
+logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
+
 # Set up a listening socket for accepting connection
 listenSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 listenSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -149,7 +164,7 @@ while True:
     incoming_socket, addr = listenSocket.accept()
 
     print "Heard new connection:", addr
-    connection_handler(incoming_socket)
+    connection_handler(incoming_socket, addr)
     
 # clean up afterwards
 listenSocket.shutdown(2)

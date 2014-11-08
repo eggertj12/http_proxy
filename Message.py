@@ -4,6 +4,7 @@ import re
 class Message:
     """ Class to hold request info """
     def __init__(self):
+        self.scheme = ''
         self.hostname = ''
         self.verb = ''
         self.path = ''
@@ -14,9 +15,9 @@ class Message:
 
     # Read request data from SocketReader
     def parse_request(self, reader):
-        print "reading line"
+#        print "reading line"
         line = reader.readline().strip('\r\n')
-        print "read line:", line
+#        print "read line:", line
         try:
             self.verb, URI, self.version = line.split(" ")
         except Exception, e:
@@ -25,13 +26,14 @@ class Message:
         self.verb = self.verb.upper()
 
         # Use this from given solution, better than the mess I had before
-        match = re.match('http://([^/:]*)(:[0-9]*)?(/.*)?',URI)
+        match = re.match('(http://)([^/:]*)(:[0-9]*)?(/.*)?',URI)
         if match == None:
             print >> sys.stderr, "Invalid request URI: ", e.strerror
             print >> sys.stderr, "URI: ", URI
-        self.hostname = match.group(1)
-        self.port = match.group(2)
-        self.path = match.group(3)
+        self.scheme = match.group(1)
+        self.hostname = match.group(2)
+        self.port = match.group(3)
+        self.path = match.group(4)
         # default port is 80, if no port is given
         if self.port ==  None:
             self.port = 80
