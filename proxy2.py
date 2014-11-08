@@ -31,8 +31,13 @@ def log(request, response, addr):
 
 # Setup a connection to the upstream server
 def connect_to_server(message):
-    conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    conn.connect((message.hostname, int(message.port)))
+    try:
+        conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        conn.connect((message.hostname, int(message.port)))
+    # Get this gaierror if it is impossible to open a connection
+    except socket.gaierror, e:
+        return None
+
     return conn
 
 # Handle sending the message (request or response) and accompanying data if available
@@ -58,13 +63,44 @@ def connection_handler(client_socket, addr):
     client_reader = SocketReader(client_socket)
     persistent = True
 
+    req_id = resp_id = 0
+    request_queue = {}
+    response_queue = {}
+
     server_reader = None
 
-    while persistent:
+    while persistent or req_id > resp_id:
         try:
+
+            # First check if we have a ready response to send to client
+            if (resp_id in response_queue):
+                req = request_queue.pop(resp_id)
+                resp = response_queue.pop(resp_id)
+                forward_message(resp, server_reader, client_reader)
+                log(req, resp, addr)
+                resp_id = resp_id + 1
+                continue
+
+            # Find out which sockets to try and listen to
+            socket_list = []
+            if persistent:
+                # Client has indicated it wants to keep connection open
+                socket_list.append(client_socket)
+
+            if server_reader != None:
+                socket_list.append(server_reader.get_socket())
+            elif req_id > resp_id:
+                # Still have responses pending, open a connection to the server
+                server_socket = connect_to_server(request_queue[resp_id])
+                if server_socket == None:
+                    # TODO: handle not opened connection (Should hardly happen here)
+                    print "Could not open connection to server"
+                    break
+                server_reader = SocketReader(server_socket)
+                socket_list.append(server_reader.get_socket())
+
             # select blocks on list of sockets until reading / writing is available
             # or until timeout happens, set timeout of 30 seconds for dropped connections
-            socket_list = [client_reader.get_socket()]
             readList, writeList, errorList = select.select(socket_list, [], socket_list, SocketReader.TIMEOUT)
 
             if errorList:
@@ -75,51 +111,67 @@ def connection_handler(client_socket, addr):
                 print "Socket timeout"
                 break
 
-            req = Message()
-            req.parse_request(client_reader)
+            if client_reader != None and client_reader.get_socket() in readList:
+                req = Message()
+                try:
+                    req.parse_request(client_reader)
+                except SocketClosedException:
+                    # Client has closed socket from it's end
+                    persistent = False
+                    continue
 
-            req.print_message(False)
+                request_queue[req_id] = req
 
-            # Only a small subset of requests are supported
-            if not req.verb in ('GET', 'POST', 'HEAD'):
-                resp = HttpHelper.create_response('405', 'Method Not Allowed')
-                client_reader.sendall(resp.to_string)
-                log(req, resp, addr)
-                # jump to cleanup
-                break            
+                req.print_message(False)
 
-            try:
-                server_socket = connect_to_server(req)
-            # Get this gaierror if it is impossible to open a connection
-            # Blame it on the client and send a Bad request response
-            except socket.gaierror, e:
-                resp = HttpHelper.create_response('400', 'Bad request')
-                client_reader.sendall(resp.to_string())
-                log(req, resp, addr)
-                # Jump directly to cleanup
-                break
+                # Only a small subset of requests are supported
+                if not req.verb in ('GET', 'POST', 'HEAD'):
+                    resp = HttpHelper.create_response('405', 'Method Not Allowed')
+                    response_queue[req_id] = resp
+                    req_id = req_id + 1
+                    continue
 
-            server_reader = SocketReader(server_socket)
+                if server_reader == None:
+                    server_socket = connect_to_server(req)
+                    if server_socket == None:
+                        resp = HttpHelper.create_response('400', 'Bad request')
+                        response_queue[req_id] = resp
+                        req_id = req_id + 1
+                        continue
+                    server_reader = SocketReader(server_socket)
 
-            forward_message(req, client_reader, server_reader)
+                forward_message(req, client_reader, server_reader)
+                req_id = req_id + 1
             
-            resp = Message()
-            resp.parse_response(server_reader)
+            elif server_reader != None and server_reader.get_socket() in readList:
+                resp = Message()
+                try:
+                    resp.parse_response(server_reader)
+                except SocketClosedException:
+                    # Client has closed socket from it's end
+                    server_reader = None
+                    continue
 
-            resp.print_message(False)
+                resp.print_message(False)
+                response_queue[resp_id] = resp
 
-            forward_message(resp, server_reader, client_reader)
+                forward_message(resp, server_reader, client_reader)
 
-            log(req, resp, addr)
+                req = request_queue.pop(resp_id)
 
-#            if not resp.is_persistent(req):
-            # Clean up server connection
-            # TODO: check for possible persistent connection
-            server_reader.close()
-            server_socket = None
+                log(req, resp, addr)
+
+                resp_id = resp_id + 1
+
+
+                if not resp.is_persistent():
+                    # Clean up server connection
+                    server_reader.close()
+                    server_socket = None
 
             # Determine if we shall loop
             persistent = req.is_persistent()
+
         except TimeoutException:
             print "connection timed out. Closing"
             persistent = False
@@ -131,11 +183,16 @@ def connection_handler(client_socket, addr):
             print 'Unknown socket error'
             persistent = False
 
-    # End of while loop
+    # End of while loop, cleanup
     if server_reader != None:
         server_reader.close()
+        server_reader = None
 
     client_reader.close()
+    client_reader = None
+
+    request_queue = None
+    response_queue = None
     print "done with request\r\n"
 
 
