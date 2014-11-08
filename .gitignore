@@ -52,3 +52,8 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# Our stuff
+cache/
+log.txt
+output.txt

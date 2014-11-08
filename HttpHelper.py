@@ -35,9 +35,9 @@ class HttpHelper:
 
         # Loop while there are chunks
         while size > 0:
-#            print "Serving chunk of size: ", size
+            print "Serving chunk of size: ", size
             # Start by sending the chunk size
-#            print "Chunk_line: ", chunk_line, " Size: ", len(chunk_line)
+            print "Chunk_line: ", chunk_line, " Size: ", len(chunk_line)
             writing.sendall(chunk_line)
 
             read = 0
@@ -57,10 +57,12 @@ class HttpHelper:
 
         # Send final 0 size chunk to recipient
         writing.sendall(chunk_line)
+        print "Serving final chunk of size: ", size
 
         # Read trailer-part and forward it blindly
         line = reading.readline()
         while len(line) > 2:
+            print "Sending a line from trailer-part:", line
             # Most likely the connection has been closed by now
             # but there could be more to come
             try:
@@ -70,6 +72,11 @@ class HttpHelper:
                 pass
 
             line = reading.readline()
+
+        # Send final empty line
+        writing.sendall(line)
+
+        print "Done with reading chunked message"
         return
 
 

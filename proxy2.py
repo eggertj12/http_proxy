@@ -30,17 +30,15 @@ def forward_message(message, reading, writing):
     # Write the message to target socket
     writing.sendall(message.to_string())
 
-    # Handle the request data if any
-    try:
-        content = message.has_content()
-        if content == 'content-length':
-            HttpHelper.read_content_length(reading, writing, int(message.headers['content-length']))
+    content = message.has_content()
+    if content == 'content-length':
+        HttpHelper.read_content_length(reading, writing, int(message.headers['content-length']))
 
-        elif content == 'chunked':
-            HttpHelper.read_chunked(reading, writing)
+    elif content == 'chunked':
+        HttpHelper.read_chunked(reading, writing)
 
-    except socket.error, e:
-        print 'Socket.error'
+    print "Done with forward_message"
+
 
 #-----------------------------------------------------------------------------------------------------------
 
@@ -52,23 +50,24 @@ def connection_handler(client_socket):
 
     while persistent:
         try:
-            # select blocks on list of sockets until reading / writing is available
-            # or until timeout happens, set timeout of 30 seconds for dropped connections
-            socket_list = [client_reader.get_socket()]
-            readList, writeList, errorList = select.select(socket_list, [], socket_list, SocketReader.TIMEOUT)
+            # # select blocks on list of sockets until reading / writing is available
+            # # or until timeout happens, set timeout of 30 seconds for dropped connections
+            # socket_list = [client_reader.get_socket()]
+            # readList, writeList, errorList = select.select(socket_list, [], socket_list, SocketReader.TIMEOUT)
 
-            if errorList:
-                print "Socket error"
-                break
+            # if errorList:
+            #     print "Socket error"
+            #     break
 
-            if len(readList) == 0:
-                print "Socket timeout"
-                break
+            # if len(readList) == 0:
+            #     print "Socket timeout"
+            #     break
 
             req = Message()
+            print "Entering parse_request"
             req.parse_request(client_reader)
 
-            req.print_message(False)
+            req.print_message(True)
 
             # Only a small subset of requests are supported
             if not req.verb in ('GET', 'POST', 'HEAD'):
@@ -96,7 +95,7 @@ def connection_handler(client_socket):
             resp = Message()
             resp.parse_response(server_reader)
 
-            resp.print_message()
+            resp.print_message(True)
 
             forward_message(resp, server_reader, client_reader)
 

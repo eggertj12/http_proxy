@@ -14,7 +14,9 @@ class Message:
 
     # Read request data from SocketReader
     def parse_request(self, reader):
+        print "reading line"
         line = reader.readline().strip('\r\n')
+        print "read line:", line
         try:
             self.verb, URI, self.version = line.split(" ")
         except Exception, e:
