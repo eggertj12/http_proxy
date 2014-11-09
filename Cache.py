@@ -84,7 +84,9 @@ class Cache:
                     filetime = datetime.datetime.strptime(str(s_file)[0:14], "%Y%m%d%H%M%S")
                     if currenttime < filetime:
                         myfile = mypath + file
-                        return myfile
+                        if file.endswith('.hdr'):
+                            file = file[:-4]
+                        return myfile.strip
                     else:
                         #If the file is expired it is thrown away
                         os.remove(mypath + file)
