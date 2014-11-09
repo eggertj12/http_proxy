@@ -132,14 +132,13 @@ def connection_handler(client_socket, addr):
                     req.parse_request(client_reader)
                 except SocketClosedException:
                     # Client has closed socket from it's end
-                    print "Client closed connection"
+                    # print "Client closed connection"
                     persistent = False
                     continue
 
                 request_queue[req_id] = req
 
-                print req.verb, req.hostname, req.port, req.path, req.version
-                # req.print_message(True)
+                # req.print_message(False)
 
                 # Only a small subset of requests are supported
                 if not req.verb in ('GET', 'POST', 'HEAD'):
@@ -188,12 +187,11 @@ def connection_handler(client_socket, addr):
                     resp.parse_response(server_reader)
                 except SocketClosedException:
                     # Server has closed socket from it's end
-                    print "Server closed connection"
+                    # print "Server closed connection"
                     server_reader = None
                     continue
 
-                resp.print_message(False)
-                req = request_queue[resp_id]
+                # resp.print_message(False)
                 resp.hostname = req.hostname
 
                 response_queue[resp_id] = resp
@@ -224,14 +222,13 @@ def connection_handler(client_socket, addr):
             persistent = req.is_persistent()
 
         except TimeoutException:
-            print "connection timed out. Closing"
+            # print "connection timed out. Closing"
             persistent = False
         except SocketClosedException, e:
-            print 'Client closed socket'
+            # print 'Client closed socket'
             persistent = False
         except socket.error, e:
             # TODO: handle this more fine grained (or better yet analyse reasons)
-            print 'General socket error'
             persistent = False
             break
 
