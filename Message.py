@@ -1,4 +1,6 @@
 import re
+import datetime
+import email.utils as eut
 
 # A class to hold request / response messages
 class Message:
@@ -12,6 +14,7 @@ class Message:
         self.status = ''
         self.text = ''
         self.headers = {}
+        self.is_cached = False
 
     # Read request data from SocketReader
     def parse_request(self, reader):
@@ -139,6 +142,77 @@ class Message:
         else:
             self.headers['via'] = ver + ' ' + name
 
+
+    # Determine cacheability of request
+    def _is_cacheable_request(self):
+        if self.verb.upper() != 'GET':
+            return False
+        if 'authorization' in self.headers:
+            return False
+        if 'cache-control' in self.headers:
+            cc = self.headers['cache-control'].lower()
+            if 'no-store' in cc or 'no-cache' in cc:
+                return False
+        # Nothing obvious preventing this request from cache
+        return True
+
+    # Determine cacheability of response
+    def _is_cacheable_response(self):
+        if self.status != '200':
+            return False
+        if 'cache-control' in self.headers:
+            cc = self.headers['cache-control'].lower()
+            if 'no-store' in cc or 'no-cache' in cc or 'private' in cc:
+                return False
+            if 'max-age' in cc or 's-maxage' in cc:
+                return True
+        
+        if 'expires' in self.headers:
+            return True
+
+        # Default to caching even when not explicitly forbidden
+        return True
+
+    # Is this a cache-able message
+    def is_cacheable(self):
+        msg = ''
+        if self.verb != '':
+            # Is a request
+            return self._is_cacheable_request()
+        elif self.status != '':
+            # Is a response
+            return self._is_cacheable_response()
+        else:
+            raise Exception('Invalid message object')
+
+
+    # Calculate freshness date of response
+    def cache_expiry_date(self):
+        # Get response date
+        if 'date' in self.headers:
+            date = self._parsedate(self.headers['date'])
+        else:
+            date = datetime.datetime.now()
+
+        # max-age takes precedence over expires
+        if 'cache-control' in self.headers:
+            match = re.match('.*s-maxage=(\d+).*', self.headers['cache-control'])
+            if match != None:
+                return date + datetime.timedelta(0, int(match.group(1)))
+
+            match = re.match('.*max-age=(\d+).*', self.headers['cache-control'])
+            if match != None:
+                return date + datetime.timedelta(0, int(match.group(1)))
+
+        if 'expires' in self.headers:
+            return self._parsedate(self.headers['expires'])
+
+        # Simple custom heuristics, just cache for one day
+        return date + datetime.timedelta(1, 0)
+
+    # Parse a date string into datetime object
+    def _parsedate(self, text):
+        return datetime.datetime(*eut.parsedate(text)[:6])
 
     # Helper for debugging
     def print_message(self, print_headers = False):

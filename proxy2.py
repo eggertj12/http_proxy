@@ -12,11 +12,13 @@ import os
 # Import our classes
 from SocketReader import SocketReader
 from HttpHelper import HttpHelper
+from Cache import Cache
 from Message import Message
 from Exceptions import *
 
 
 #-----------------------------------------------------------------------------------------------------------
+# Logging
 
 # Write the request / response line to given log file
 def log(request, response, addr):
@@ -28,6 +30,9 @@ def log(request, response, addr):
     log = log + response.status + ' ' + response.text
     logging.warning(log)
 
+
+#-----------------------------------------------------------------------------------------------------------
+# Connection related
 
 # Setup a connection to the upstream server
 def connect_to_server(message):
@@ -41,7 +46,7 @@ def connect_to_server(message):
     return conn
 
 # Handle sending the message (request or response) and accompanying data if available
-def forward_message(message, reading, writing):
+def forward_message(message, reading, writing, cache_file = None):
     # Let the world know who we are
 #    message.add_via('RatherPoorProxy')
 
@@ -57,6 +62,7 @@ def forward_message(message, reading, writing):
 
 
 #-----------------------------------------------------------------------------------------------------------
+# The main handler loop
 
 # Handle one persistent connection
 def connection_handler(client_socket, addr):
@@ -184,8 +190,16 @@ def connection_handler(client_socket, addr):
 
                 response_queue[resp_id] = resp
 
-                forward_message(resp, server_reader, client_reader)
+                cache_file = None
+                if req.is_cacheable() and resp.is_cacheable():
+                    if 'content-type' in resp.headers:
+                        ct = resp.headers['content-type']
+                    else:
+                        ct = ''
+                    cache_file = Cache.filename(req.hostname, req.path, resp.cache_expiry_date(), ct)
+                    print "Cache-ing file: ", cache_file
 
+                forward_message(resp, server_reader, client_reader, cache_file)
 
                 log(req, resp, addr)
 
