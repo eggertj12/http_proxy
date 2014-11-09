@@ -48,10 +48,13 @@ class Cache:
         lock = threading.Lock()
         filename = filename + '.hdr'
         with lock:
-            file = open(filename, "r")
-            file.readline()
-            message.parse_headers(file)
-            file.close()
+            try:
+                file = open(filename, "r")
+                file.readline()
+                message.parse_headers(file)
+                file.close()
+            except:
+                return
 
 
     # Saving data to cache file
