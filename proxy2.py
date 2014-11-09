@@ -1,3 +1,25 @@
+# ----------------------------------------------------------------------------------------------------
+# http_proxy.py
+# 
+# Simple http proxy server
+#
+# Uses some helper classes
+#    Message for representing the messages (request or response) and operations on those
+#    SocketReader is a wrapper for sockets which provides buffered reading from socket of lines or bytes
+#    Exceptions contains two custom exceptions we use
+#    Cache is a static class for wrapping cache operations
+#    HttpHelper is also a static class containing some operations for handling the communication
+# 
+#
+# It handles parallel connections using threading, handling each persistent connection in a separate thread
+# Pipelining is somewhat supported, although testing with Opera has been not really successful where the browser 
+#    closes the socket resulting in a broken pipe error
+# 
+# 
+# 
+# 
+# ----------------------------------------------------------------------------------------------------
+
 from socket import *
 import socket
 import sys
@@ -138,7 +160,7 @@ def connection_handler(client_socket, addr):
 
                 request_queue[req_id] = req
 
-                # req.print_message(False)
+                # req.print_message(True)
 
                 # Only a small subset of requests are supported
                 if not req.verb in ('GET', 'POST', 'HEAD'):
@@ -191,7 +213,7 @@ def connection_handler(client_socket, addr):
                     server_reader = None
                     continue
 
-                # resp.print_message(False)
+                # resp.print_message(True)
                 resp.hostname = req.hostname
 
                 response_queue[resp_id] = resp

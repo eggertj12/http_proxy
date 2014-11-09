@@ -25,15 +25,14 @@ class Message:
         try:
             self.verb, URI, self.version = line.split(" ")
         except Exception, e:
-            print >> sys.stderr, "Invalid request line: ", e.strerror
+            print "Invalid request line: ", line
 
         self.verb = self.verb.upper()
 
         # Use this from given solution, better than the mess I had before
         match = re.match('(http://)([^/:]*)(:[0-9]*)?(/.*)?',URI)
         if match == None:
-            print >> sys.stderr, "Invalid request URI: ", e.strerror
-            print >> sys.stderr, "URI: ", URI
+            print "Invalid request URI:", URI
         self.scheme = match.group(1)
         self.hostname = match.group(2)
         self.port = match.group(3)
@@ -42,7 +41,7 @@ class Message:
         if self.port ==  None:
             self.port = 80
         else:
-            self.port = int(self.port)
+            self.port = int(self.port.strip(':'))
         # default path is /, if no path is given
         if self.path == None:
             self.path = '/'
@@ -54,8 +53,8 @@ class Message:
         line = reader.readline().strip('\r\n')
         try:
             self.version, self.status, self.text = line.split(" ", 2)
-        except Exception, e:
-            print "Invalid response line: ", e.message
+        except Exception:
+            print "Invalid response line: ", line
 
         self.parse_headers(reader)
 
@@ -183,8 +182,7 @@ class Message:
         elif self.status != '':
             # Is a response
             return self._is_cacheable_response()
-        else:
-            raise Exception('Invalid message object')
+        return False
 
 
     # Calculate freshness date of response
