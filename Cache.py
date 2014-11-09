@@ -77,19 +77,19 @@ class Cache:
 
             searchfile = urllib.quote_plus(filename)
 
-            for file in os.listdir(mypath):
-                s_file = file.split('%7C')[0]
+            for f in os.listdir(mypath):
+                s_file = f.split('%7C')[0]
                 if s_file.endswith(searchfile):
                     currenttime = datetime.datetime.now()
                     filetime = datetime.datetime.strptime(str(s_file)[0:14], "%Y%m%d%H%M%S")
                     if currenttime < filetime:
-                        myfile = mypath + file
-                        if file.endswith('.hdr'):
-                            file = file[:-4]
-                        return myfile.strip
+                        if f.endswith('.hdr'):
+                            f = f[:-4]
+                        myfile = mypath + f
+                        return myfile
                     else:
-                        #If the file is expired it is thrown away
-                        os.remove(mypath + file)
+                        #If the f is expired it is thrown away
+                        os.remove(mypath + f)
 
             return None
 
