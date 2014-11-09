@@ -81,7 +81,6 @@ def connection_handler(client_socket, addr):
 
     while persistent or req_id > resp_id:
         try:
-            print "req:", req_id, "resp:", resp_id
             # First check if we have a ready response to send to client
             if (resp_id in response_queue):
                 req = request_queue[resp_id]
@@ -100,11 +99,9 @@ def connection_handler(client_socket, addr):
             if persistent:
                 # Client has indicated it wants to keep connection open
                 socket_list.append(client_socket)
-                print "Added client_socket"
 
             if server_reader != None:
                 socket_list.append(server_reader.get_socket())
-                print "Added existing server_socket"
             elif req_id > resp_id:
                 # Still have responses pending, open a connection to the server
                 req = request_queue[resp_id]
@@ -115,7 +112,6 @@ def connection_handler(client_socket, addr):
                     break
                 server_reader = SocketReader(server_socket, req.hostname)
                 socket_list.append(server_reader.get_socket())
-                print "Added new server_socket"
 
             # select blocks on list of sockets until reading / writing is available
             # or until timeout happens, set timeout of 30 seconds for dropped connections
@@ -143,7 +139,7 @@ def connection_handler(client_socket, addr):
                 request_queue[req_id] = req
 
                 print req.verb, req.hostname, req.port, req.path, req.version
-                req.print_message(True)
+                # req.print_message(True)
 
                 # Only a small subset of requests are supported
                 if not req.verb in ('GET', 'POST', 'HEAD'):
@@ -156,7 +152,6 @@ def connection_handler(client_socket, addr):
                 cache_file = Cache.is_in_cache(req.hostname, req.path)
                 if cache_file != None:
                     resp = HttpHelper.create_response('200', 'OK')
-                    resp.headers['custom-header'] = 'SERVED FROM CACHE'
                     resp.cache_file = cache_file
                     response_queue[req_id] = resp
                     req_id = req_id + 1
@@ -197,8 +192,7 @@ def connection_handler(client_socket, addr):
                     server_reader = None
                     continue
 
-                resp.print_message(True)
-#                print resp.status, resp.text, resp.version
+                resp.print_message(False)
                 req = request_queue[resp_id]
                 resp.hostname = req.hostname
 
@@ -211,7 +205,8 @@ def connection_handler(client_socket, addr):
                     else:
                         ct = ''
                     cache_file = Cache.filename(req.hostname, req.path, resp.cache_expiry_date(), ct)
-                    print "Cache-ing file: ", cache_file
+                    Cache.cache_headers(resp, cache_file)
+
 
                 forward_message(resp, server_reader, client_reader, cache_file)
 
@@ -250,8 +245,6 @@ def connection_handler(client_socket, addr):
 
     request_queue = None
     response_queue = None
-    print "done with connection\r\n"
-
 
 #-----------------------------------------------------------------------------------------------------------
 # Program start
@@ -259,7 +252,7 @@ def connection_handler(client_socket, addr):
 
 #Send in two variables, portnr and log.txt
 if (len(sys.argv) != 3 and len(sys.argv) != 4):
-    # print 'Need two arguments, port number and file for logging'
+    print 'Need two arguments, port number and file for logging'
     sys.exit(1)
 
 port = int(sys.argv[1])

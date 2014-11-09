@@ -1,6 +1,7 @@
 import re
 import datetime
 import email.utils as eut
+import sys
 
 # A class to hold request / response messages
 class Message:

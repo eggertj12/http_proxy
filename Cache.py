@@ -20,11 +20,7 @@ class Cache:
         if ExpireDate == 'None':
             return None
 
-        print ExpireDate
-        # strippedDate = str(datetime.datetime.strptime(expire_date, "(%Y, %m, %d, %H, %M, %S, 0, 1, -1)"))
-        # print strippedDate
         date = str.replace(str.replace(str.replace(ExpireDate, ':', ''), ' ', ''), '-', '')
-        print date
         lock = threading.Lock()
         with lock:
             if not os.path.exists(my_dir):
@@ -35,7 +31,30 @@ class Cache:
         return my_dir + '/' + date + urllib.quote_plus(filename)
 
 
-    #Saving data to cache
+    # Save response message to file to store headers
+    @staticmethod
+    def cache_headers(message, filename):
+        lock = threading.Lock()
+        data = message.to_string()
+        filename = filename + '.hdr'
+        with lock:
+            file = open(filename, "w")
+            file.write(data)
+            file.close()
+
+    # Restore headers from saved file
+    @staticmethod
+    def restore_headers(message, filename):
+        lock = threading.Lock()
+        filename = filename + '.hdr'
+        with lock:
+            file = open(filename, "r")
+            file.readline()
+            message.parse_headers(file)
+            file.close()
+
+
+    # Saving data to cache
     @staticmethod
     def cache_file(filename, data):
         lock = threading.Lock()
@@ -45,7 +64,7 @@ class Cache:
             file.close()
 
 
-    #Check if data is on proxy
+    # Check if data is on proxy
     @staticmethod
     def is_in_cache(url, filename):
         lock = threading.Lock()
@@ -96,6 +115,12 @@ class Cache:
         filelength = os.path.getsize(myfile)
         content_type = urllib.unquote_plus(myfile).split('|')[-1]
 
+        Cache.restore_headers(message, myfile)
+        # Serve everything with content-length method, remove chunked if it was set
+        if 'content-encoding' in message.headers:
+            message.headers['content-encoding'] = str.replace(message.headers['content-encoding'].lower(), 'chunked', '')
+
+        message.headers['custom-header'] = 'SERVED FROM CACHE'
         message.headers['content-type'] = content_type
         message.headers['content-length'] = str(filelength)
         writing.sendall(message.to_string())
