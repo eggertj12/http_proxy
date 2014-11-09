@@ -15,7 +15,7 @@
 # Pipelining is supported, although testing with Opera has been not really successful where the browser 
 #    closes the socket resulting in a broken pipe error.
 # Logging is done using the thread safe logging module and cache uses locking to protect file operations
-# 
+# Caching is persisted between sessions by storing all metadata on filesystem
 # 
 # 
 # ----------------------------------------------------------------------------------------------------
