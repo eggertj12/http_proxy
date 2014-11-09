@@ -7,7 +7,7 @@ import datetime
 from SocketReader import SocketReader
 from Message import Message
 
-# Helper to parse http messages
+# Class for handling the cache
 class Cache:
     CACHE_FOLDER = 'cache/'
 
@@ -54,7 +54,7 @@ class Cache:
             file.close()
 
 
-    # Saving data to cache
+    # Saving data to cache file
     @staticmethod
     def cache_file(filename, data):
         lock = threading.Lock()
@@ -64,7 +64,7 @@ class Cache:
             file.close()
 
 
-    # Check if data is on proxy
+    # Check if data is on proxy cache
     @staticmethod
     def is_in_cache(url, filename):
         lock = threading.Lock()
@@ -88,18 +88,6 @@ class Cache:
                     else:
                         #If the file is expired it is thrown away
                         os.remove(mypath + file)
-
-            #searchfile = urllib.quote_plus(filename)[:29]
-
-            # for file in os.listdir(myPath):
-            #     if file.endswith(searchfile):
-            #         currenttime = datetime.datetime.now()
-            #         filetime = datetime.datetime.strptime(str(file)[1:20], "%Y_%m_%d_%H_%M_%S")
-            #         if currenttime < filetime:
-            #             myfile = open(myPath + str(file), 'r')
-            #             content  = myfile.read()
-            #             myfile.close()
-            #             return content
 
             return None
 

@@ -12,9 +12,9 @@
 # 
 #
 # It handles parallel connections using threading, handling each persistent connection in a separate thread
-# Pipelining is somewhat supported, although testing with Opera has been not really successful where the browser 
-#    closes the socket resulting in a broken pipe error
-# 
+# Pipelining is supported, although testing with Opera has been not really successful where the browser 
+#    closes the socket resulting in a broken pipe error.
+# Logging is done using the thread safe logging module and cache uses locking to protect file operations
 # 
 # 
 # 
@@ -67,7 +67,9 @@ def connect_to_server(message):
 
     return conn
 
+
 # Handle sending the message (request or response) and accompanying data if available
+# Will load from cache if this is a cached response
 def forward_message(message, reading, writing, cache_file = None):
     # Let the world know who we are
     message.add_via('RatherPoorProxy')
@@ -95,12 +97,14 @@ def connection_handler(client_socket, addr):
     client_reader = SocketReader(client_socket)
     persistent = True
 
+    # Keep requests and possibly out of order responses (f.ex. cached) in a dictionary
     req_id = resp_id = 0
     request_queue = {}
     response_queue = {}
 
     server_reader = None
 
+    # Loop as long as the client wants and also until all queued requests have been answered
     while persistent or req_id > resp_id:
         try:
             # First check if we have a ready response to send to client
@@ -158,12 +162,14 @@ def connection_handler(client_socket, addr):
                     persistent = False
                     continue
 
+                # Store request to have it available when it's response arrives
                 request_queue[req_id] = req
 
                 # req.print_message(True)
 
                 # Only a small subset of requests are supported
                 if not req.verb in ('GET', 'POST', 'HEAD'):
+                    # Create a response and store in queue until this request will be answered
                     resp = HttpHelper.create_response('405', 'Method Not Allowed')
                     resp.headers['connection'] = 'close'
                     response_queue[req_id] = resp
@@ -182,6 +188,7 @@ def connection_handler(client_socket, addr):
                 if server_reader == None:
                     server_socket = connect_to_server(req)
                     if server_socket == None:
+                        # Respond if the requested server can not be connected to
                         resp = HttpHelper.create_response('502', 'Bad gateway')
                         resp.headers['connection'] = 'close'
                         response_queue[req_id] = resp
@@ -189,6 +196,7 @@ def connection_handler(client_socket, addr):
                         continue
                     server_reader = SocketReader(server_socket, req.hostname)
 
+                # Might have to connect to a different server.
                 elif server_reader.hostname != req.hostname:
                     server_socket = connect_to_server(req)
                     if server_socket == None:
@@ -199,6 +207,7 @@ def connection_handler(client_socket, addr):
                         continue
                     server_reader = SocketReader(server_socket, req.hostname)
 
+                # Finally ready to send the request
                 forward_message(req, client_reader, server_reader)
                 req_id = req_id + 1
             
@@ -236,7 +245,7 @@ def connection_handler(client_socket, addr):
 
 
                 if not resp.is_persistent():
-                    # Clean up server connection
+                    # Server wants to close connection. Clean up
                     server_reader.close()
                     server_socket = None
 
@@ -281,6 +290,7 @@ if len(sys.argv) == 4:
     print "Starting in unthreaded mode"
     threaded = False
 
+# Set up logger configuration
 logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
 
 # Set up a listening socket for accepting connection

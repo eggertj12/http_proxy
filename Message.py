@@ -30,13 +30,16 @@ class Message:
         self.verb = self.verb.upper()
 
         # Use this from given solution, better than the mess I had before
-        match = re.match('(http://)([^/:]*)(:[0-9]*)?(/.*)?',URI)
+        match = re.match('(http://)?([^/:]*)(:[0-9]*)?(/.*)?',URI)
         if match == None:
             print "Invalid request URI:", URI
         self.scheme = match.group(1)
         self.hostname = match.group(2)
         self.port = match.group(3)
         self.path = match.group(4)
+        # default scheme to http if not available
+        if self.scheme == None:
+            self.scheme = 'http://'
         # default port is 80, if no port is given
         if self.port ==  None:
             self.port = 80

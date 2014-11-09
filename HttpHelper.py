@@ -5,7 +5,7 @@ import socket
 from Message import Message
 from Cache import Cache
 
-# Helper to parse http messages
+# Helper to handle http messages
 class HttpHelper:
     BUFLEN = 4096
 
