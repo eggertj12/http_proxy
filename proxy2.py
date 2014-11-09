@@ -48,17 +48,21 @@ def connect_to_server(message):
 # Handle sending the message (request or response) and accompanying data if available
 def forward_message(message, reading, writing, cache_file = None):
     # Let the world know who we are
-#    message.add_via('RatherPoorProxy')
+    message.add_via('RatherPoorProxy')
 
-    # Write the message to target socket
-    writing.sendall(message.to_string())
+    if message.cache_file != None:
+        Cache.send_cached_file(message, writing)
 
-    content = message.has_content()
-    if content == 'content-length':
-        HttpHelper.read_content_length(reading, writing, int(message.headers['content-length']))
+    else:
+        # Write the message to target socket
+        writing.sendall(message.to_string())
 
-    elif content == 'chunked':
-        HttpHelper.read_chunked(reading, writing)
+        content = message.has_content()
+        if content == 'content-length':
+            HttpHelper.read_content_length(reading, writing, int(message.headers['content-length']), cache_file)
+
+        elif content == 'chunked':
+            HttpHelper.read_chunked(reading, writing, cache_file)
 
 
 #-----------------------------------------------------------------------------------------------------------
@@ -148,6 +152,16 @@ def connection_handler(client_socket, addr):
                     response_queue[req_id] = resp
                     req_id = req_id + 1
                     continue
+
+                cache_file = Cache.is_in_cache(req.hostname, req.path)
+                if cache_file != None:
+                    resp = HttpHelper.create_response('200', 'OK')
+                    resp.headers['custom-header'] = 'SERVED FROM CACHE'
+                    resp.cache_file = cache_file
+                    response_queue[req_id] = resp
+                    req_id = req_id + 1
+                    continue
+                    
 
                 if server_reader == None:
                     server_socket = connect_to_server(req)

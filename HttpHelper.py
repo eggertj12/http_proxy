@@ -3,6 +3,7 @@ from socket import *
 import socket
 
 from Message import Message
+from Cache import Cache
 
 # Helper to parse http messages
 class HttpHelper:
@@ -20,16 +21,18 @@ class HttpHelper:
 
     # Read data sent via buffered mode
     @staticmethod
-    def read_content_length(reading, writing, length):
+    def read_content_length(reading, writing, length, cache_file = None):
         read = 0
         while read < length:
             response = reading.read(min(HttpHelper.BUFLEN, length - read))
             read = read + len(response)
             writing.sendall(response)
+            if cache_file != None:
+                Cache.cache_file(cache_file, response)
 
     # Read data sent via chunked transfer-encoding
     @staticmethod
-    def read_chunked(reading, writing):
+    def read_chunked(reading, writing, cache_file = None):
         chunk_line = reading.readline()
         size = int(chunk_line.split(";", 1)[0], 16)
 
@@ -44,6 +47,8 @@ class HttpHelper:
                 response = reading.read(min(HttpHelper.BUFLEN, size + 2 - read))
                 read = read + len(response)
                 writing.sendall(response)
+                if cache_file != None:
+                    Cache.cache_file(cache_file, response)
 
             # Try to read next chunk line, fall back to size zero in case server does not send terminating chunk
             chunk_line = reading.readline()

@@ -14,7 +14,7 @@ class Message:
         self.status = ''
         self.text = ''
         self.headers = {}
-        self.is_cached = False
+        self.cache_file = None
 
     # Read request data from SocketReader
     def parse_request(self, reader):

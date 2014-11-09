@@ -1,8 +1,10 @@
+import threading
 import urllib
 import email.utils as eut
 import os
 import datetime
 
+from SocketReader import SocketReader
 from Message import Message
 
 # Helper to parse http messages
@@ -19,9 +21,10 @@ class Cache:
             return None
 
         print ExpireDate
-        strippedDate = str(datetime.datetime.strptime(expire_date, "(%Y, %m, %d, %H, %M, %S, 0, 1, -1)"))
-        print strippedDate
-        date = str.replace(str.replace(str.replace(strippedDate, ':', ''), ' ', ''), '-', '')
+        # strippedDate = str(datetime.datetime.strptime(expire_date, "(%Y, %m, %d, %H, %M, %S, 0, 1, -1)"))
+        # print strippedDate
+        date = str.replace(str.replace(str.replace(ExpireDate, ':', ''), ' ', ''), '-', '')
+        print date
         lock = threading.Lock()
         with lock:
             if not os.path.exists(my_dir):
@@ -50,7 +53,7 @@ class Cache:
         with lock:
             if not os.path.exists('cache'):
                 os.makedirs('cache')
-            if not os.path.exists(self.CACHE_FOLDER + url):
+            if not os.path.exists(Cache.CACHE_FOLDER + url):
                 return None
 
             searchfile = urllib.quote_plus(filename)
@@ -83,22 +86,22 @@ class Cache:
 
     # Serve a file from cache
     @staticmethod
-    def send_cached_file(myfile, writing):
+    def send_cached_file(message, writing):
         read = 0
-        #filestat = os.stat(myfile)
-        #filelength = filestat.st_size
+
+        myfile = message.cache_file
+
         currfile = open(myfile,'r')
 
         filelength = os.path.getsize(myfile)
         content_type = urllib.unquote_plus(myfile).split('|')[-1]
 
-        my_header = 'HTTP/1.1 200 OK\r\n'
-        my_header += 'content-type: ' + content_type + '\r\n'
-        my_header += 'content-length: ' + str(filelength) + '\r\n\r\n'
-        writing.sendall(my_header)
+        message.headers['content-type'] = content_type
+        message.headers['content-length'] = str(filelength)
+        writing.sendall(message.to_string())
 
         while read < filelength:
-            response = currfile.read(buflen)
+            response = currfile.read(SocketReader.READ_SIZE)
             read = read + len(response)
             writing.sendall(response)
         currfile.close()
