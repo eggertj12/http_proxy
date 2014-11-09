@@ -71,14 +71,18 @@ def connection_handler(client_socket, addr):
 
     while persistent or req_id > resp_id:
         try:
-
+            print "req:", req_id, "resp:", resp_id
             # First check if we have a ready response to send to client
             if (resp_id in response_queue):
-                req = request_queue.pop(resp_id)
+                req = request_queue[resp_id]
                 resp = response_queue.pop(resp_id)
                 forward_message(resp, server_reader, client_reader)
                 log(req, resp, addr)
                 resp_id = resp_id + 1
+
+                # If no more queued messages just force close connection
+                if req_id == resp_id:
+                    persistent = False
                 continue
 
             # Find out which sockets to try and listen to
@@ -86,12 +90,14 @@ def connection_handler(client_socket, addr):
             if persistent:
                 # Client has indicated it wants to keep connection open
                 socket_list.append(client_socket)
+                print "Added client_socket"
 
             if server_reader != None:
                 socket_list.append(server_reader.get_socket())
+                print "Added existing server_socket"
             elif req_id > resp_id:
-                req = request_queue[resp_id]
                 # Still have responses pending, open a connection to the server
+                req = request_queue[resp_id]
                 server_socket = connect_to_server(req)
                 if server_socket == None:
                     # TODO: handle not opened connection (Should hardly happen here)
@@ -99,6 +105,7 @@ def connection_handler(client_socket, addr):
                     break
                 server_reader = SocketReader(server_socket, req.hostname)
                 socket_list.append(server_reader.get_socket())
+                print "Added new server_socket"
 
             # select blocks on list of sockets until reading / writing is available
             # or until timeout happens, set timeout of 30 seconds for dropped connections
@@ -119,17 +126,19 @@ def connection_handler(client_socket, addr):
                     req.parse_request(client_reader)
                 except SocketClosedException:
                     # Client has closed socket from it's end
+                    print "Client closed connection"
                     persistent = False
                     continue
 
                 request_queue[req_id] = req
 
                 print req.verb, req.hostname, req.port, req.path, req.version
-                # req.print_message(False)
+                req.print_message(True)
 
                 # Only a small subset of requests are supported
                 if not req.verb in ('GET', 'POST', 'HEAD'):
                     resp = HttpHelper.create_response('405', 'Method Not Allowed')
+                    resp.headers['connection'] = 'close'
                     response_queue[req_id] = resp
                     req_id = req_id + 1
                     continue
@@ -137,7 +146,8 @@ def connection_handler(client_socket, addr):
                 if server_reader == None:
                     server_socket = connect_to_server(req)
                     if server_socket == None:
-                        resp = HttpHelper.create_response('400', 'Bad request')
+                        resp = HttpHelper.create_response('502', 'Bad gateway')
+                        resp.headers['connection'] = 'close'
                         response_queue[req_id] = resp
                         req_id = req_id + 1
                         continue
@@ -146,7 +156,8 @@ def connection_handler(client_socket, addr):
                 elif server_reader.hostname != req.hostname:
                     server_socket = connect_to_server(req)
                     if server_socket == None:
-                        resp = HttpHelper.create_response('400', 'Bad request')
+                        resp = HttpHelper.create_response('502', 'Bad gateway: ' + req.hostname)
+                        resp.headers['connection'] = 'close'
                         response_queue[req_id] = resp
                         req_id = req_id + 1
                         continue
@@ -161,13 +172,14 @@ def connection_handler(client_socket, addr):
                 try:
                     resp.parse_response(server_reader)
                 except SocketClosedException:
-                    # Client has closed socket from it's end
+                    # Server has closed socket from it's end
+                    print "Server closed connection"
                     server_reader = None
                     continue
 
-                resp.print_message(False)
+                resp.print_message(True)
 #                print resp.status, resp.text, resp.version
-                req = request_queue.pop(resp_id)
+                req = request_queue[resp_id]
                 resp.hostname = req.hostname
 
                 response_queue[resp_id] = resp
@@ -196,8 +208,9 @@ def connection_handler(client_socket, addr):
             persistent = False
         except socket.error, e:
             # TODO: handle this more fine grained (or better yet analyse reasons)
-            print 'Unknown socket error'
+            print 'General socket error'
             persistent = False
+            break
 
     # End of while loop, cleanup
     if server_reader != None:
@@ -217,11 +230,16 @@ def connection_handler(client_socket, addr):
 #-----------------------------------------------------------------------------------------------------------
 
 #Send in two variables, portnr and log.txt
-if (len(sys.argv) != 3):
+if (len(sys.argv) != 3 and len(sys.argv) != 4):
     # print 'Need two arguments, port number and file for logging'
     sys.exit(1)
 
 port = int(sys.argv[1])
+
+threaded = True
+if len(sys.argv) == 4:
+    print "Starting in unthreaded mode"
+    threaded = False
 
 logging.basicConfig(filename=sys.argv[2], format='%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S+0000')
 
@@ -236,8 +254,13 @@ listenSocket.listen(5)
 while True:
     incoming_socket, addr = listenSocket.accept()
 
-    print "Heard new connection:", addr
-    connection_handler(incoming_socket, addr)
+    if threaded:
+        # dispatch to thread, set it as deamon as not to keep process alive
+        thr = threading.Thread(target=connection_handler, args=(incoming_socket, addr))
+        thr.daemon = True
+        thr.start()
+    else:
+        connection_handler(incoming_socket, addr)
     
 # clean up afterwards
 listenSocket.shutdown(2)

@@ -51,7 +51,7 @@ class Message:
         try:
             self.version, self.status, self.text = line.split(" ", 2)
         except Exception, e:
-            print "Invalid response line: ", e.strerror
+            print "Invalid response line: ", e.message
 
         self.parse_headers(reader)
 
